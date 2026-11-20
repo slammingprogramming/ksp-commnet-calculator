@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/slammingprogramming/ksp-commnet-calculator/security/policy
+    about: Do not post details in a public issue. Read the private reporting steps first (SimpleX plus a quick verification).
+  - name: Contact the maintainer (SimpleX)
+    url: https://smp14.simplex.im/a#3gZ-zeHs4QrFZKLAN0o3SC_XQJXhj1eYBVTO_c0FAtg
+    about: Questions, ideas or anything that doesn't belong in a public issue. Opens a private SimpleX chat.

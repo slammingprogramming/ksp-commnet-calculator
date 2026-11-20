@@ -1,0 +1,28 @@
+name: Release
+
+# Push a tag like v1.0.0 to publish a downloadable zip.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm test
+      - name: Package
+        run: |
+          mkdir -p pkg/ksp-commnet-calculator
+          cp -r index.html css js README.md LICENSE SECURITY.md pkg/ksp-commnet-calculator/
+          (cd pkg && zip -r "../ksp-commnet-calculator-${GITHUB_REF_NAME}.zip" ksp-commnet-calculator)
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "ksp-commnet-calculator-${GITHUB_REF_NAME}.zip" --generate-notes --title "$GITHUB_REF_NAME"

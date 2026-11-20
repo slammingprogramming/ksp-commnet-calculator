@@ -1,0 +1,7 @@
+version: 2
+updates:
+  # Keeps the actions used by the workflows current (there are no npm dependencies).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

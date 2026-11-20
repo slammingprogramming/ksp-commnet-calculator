@@ -1,0 +1,39 @@
+name: Bug report
+description: Something crashes, looks wrong, or gives a result that disagrees with the game.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping. Security problems do **not** belong here: see the
+        [security policy](https://github.com/slammingprogramming/ksp-commnet-calculator/security/policy). Please remove anything personal (save names, file paths) from what you paste.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Which tab, which settings (Tracking Station level, difficulty, mods), and any file you imported.
+  - type: textarea
+    id: game
+    attributes:
+      label: If it disagrees with the game
+      description: >
+        What the game shows (for example the signal strength or the time a link drops), with your KSP version and
+        CommNet difficulty settings.
+  - type: input
+    id: env
+    attributes:
+      label: Browser and version, and whether you used the online site or a downloaded copy
+  - type: checkboxes
+    id: ack
+    attributes:
+      label: Checks
+      options:
+        - label: I removed personal information from this report.
+          required: true

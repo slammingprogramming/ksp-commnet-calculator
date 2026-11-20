@@ -1,0 +1,35 @@
+name: Security contact request
+description: Ask to report a security problem privately. Do NOT put any details here.
+title: "Security contact request"
+labels: ["security-contact"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not describe the vulnerability here; this issue is public.** It only exists so that you and the
+        maintainer can verify each other's identity before talking privately over SimpleX.
+        The full steps are in the [security policy](https://github.com/slammingprogramming/ksp-commnet-calculator/security/policy).
+  - type: input
+    id: simplex
+    attributes:
+      label: Your SimpleX contact name
+      description: The display name the maintainer will see when you connect, so the two can be matched.
+    validations:
+      required: true
+  - type: textarea
+    id: signed
+    attributes:
+      label: Signed statement
+      description: >
+        Paste the statement you signed (it names your GitHub account, this issue's number and your SimpleX name)
+        and the contents of the .sig file, as described in the security policy.
+      render: text
+    validations:
+      required: true
+  - type: checkboxes
+    id: ack
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have not included any details of the vulnerability in this issue.
+          required: true

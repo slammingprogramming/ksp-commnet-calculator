@@ -1,0 +1,18 @@
+# Google Drive shortcut files (contain a personal email address)
+Communications Network Calculator/
+*.gsheet
+*.gform
+
+node_modules/
+.claude/
+
+# Agent notes: never part of the public repository
+AGENTS.md
+
+tools/ildump/bin/
+tools/ildump/obj/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+*.log

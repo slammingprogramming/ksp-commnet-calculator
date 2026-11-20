@@ -1,0 +1,30 @@
+{
+  "name": "ksp-commnet-workbench",
+  "version": "1.0.0",
+  "description": "Kerbal Space Program CommNet workbench: signal strength, relay chains, orbit tracking, occlusion analysis and relay planning.",
+  "private": true,
+  "author": "slammingprogramming",
+  "homepage": "https://github.com/slammingprogramming/ksp-commnet-calculator#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slammingprogramming/ksp-commnet-calculator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/slammingprogramming/ksp-commnet-calculator/issues"
+  },
+  "keywords": [
+    "kerbal-space-program",
+    "ksp",
+    "commnet",
+    "orbital-mechanics",
+    "relay-planner"
+  ],
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "start": "node scripts/serve.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "AGPL-3.0-or-later"
+}

@@ -1,0 +1,41 @@
+name: Data correction
+description: An antenna, body, ground station or mod value is wrong or missing.
+labels: ["data"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Values should come from the game's or mod's own part/planet configs, not from other tools or spreadsheets.
+        Quote the config lines (the `ModuleDataTransmitter` / `Body` node) rather than screenshots where you can.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What needs correcting?
+      options:
+        - Antenna (stock / Breaking Ground)
+        - Antenna (mod)
+        - Body (stock / Outer Planets Mod)
+        - Ground station
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: item
+    attributes:
+      label: Which one?
+      description: Part or body name, and the mod and its version if it is not stock.
+    validations:
+      required: true
+  - type: textarea
+    id: values
+    attributes:
+      label: Current value and correct value
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source
+      description: The config excerpt or a link to the mod's repository file, and the game or mod version it comes from.
+    validations:
+      required: true
