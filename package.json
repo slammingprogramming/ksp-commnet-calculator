@@ -20,7 +20,7 @@
     "relay-planner"
   ],
   "scripts": {
-    "test": "node --test \"test/*.test.js\"",
+    "test": "node scripts/test.js",
     "start": "node scripts/serve.js"
   },
   "engines": {
