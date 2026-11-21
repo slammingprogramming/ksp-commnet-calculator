@@ -180,7 +180,11 @@
       const count = Math.max(0, Math.floor(Number(e.count) || 0));
       if (!count) continue;
       antennaCount += count;
-      const item = { power: a.power, exp: a.combinable === false ? 0 : a.exp, combinable: a.combinable !== false, type: a.type, count: count };
+      // The game ignores a transmitter that is not fully extended (ModuleDataTransmitter.CanComm), so a retracted or broken
+      // antenna contributes nothing.
+      if (e.retracted) continue;
+      const refl = e.reflector && a.feed ? Data.REFLECTORS.find((r) => r.id === e.reflector) : null;
+      const item = { power: a.power + (refl ? refl.bonus * a.feed : 0), exp: a.combinable === false ? 0 : a.exp, combinable: a.combinable !== false, type: a.type, count: count };
       all.push(item);
       if (a.type === 'relay') relay.push(item);
     }

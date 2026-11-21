@@ -173,12 +173,28 @@
       // asset orbits
       sim.nodes.forEach((n, i) => {
         if (n.home || !n._p) return;
-        const pi = w.index.get(n.loc.body).idx * 3;
         ctx.beginPath();
-        for (let k = 0; k <= 90; k++) {
-          Orb.positionAtE(n._p, (Orb.TAU * k) / 90, tmp);
-          const X = px(bp[pi] + tmp[0]), Y = py(bp[pi + AX] + tmp[AX]);
-          if (k === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+        if (n._segs) {
+          // patched conics: each leg is drawn about its own body (where that body is now), from now until the next hand-over
+          n._segs.forEach((sg) => {
+            const tA = Math.max(sg.from, sc.ut);
+            const tB = isFinite(sg.to) ? sg.to : tA + (sg.p.hyper ? 40 : 1) * n.period;
+            if (!(tB > tA)) return;
+            const bi = sg.bodyIdx * 3;
+            const N = 240;
+            for (let k = 0; k <= N; k++) {
+              Orb.position(sg.p, tA + ((tB - tA) * k) / N, tmp);
+              const X = px(bp[bi] + tmp[0]), Y = py(bp[bi + AX] + tmp[AX]);
+              if (k === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+            }
+          });
+        } else {
+          const pi = w.index.get(n.loc.body).idx * 3;
+          for (let k = 0; k <= 90; k++) {
+            Orb.positionAtE(n._p, (Orb.TAU * k) / 90, tmp);
+            const X = px(bp[pi] + tmp[0]), Y = py(bp[pi + AX] + tmp[AX]);
+            if (k === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+          }
         }
         ctx.strokeStyle = n.source && n.source.planned ? 'rgba(217,111,217,0.55)' : n.tracked ? 'rgba(110,168,255,0.55)' : 'rgba(240,180,41,0.55)';
         ctx.stroke();

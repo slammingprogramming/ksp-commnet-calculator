@@ -79,6 +79,19 @@ The rules below were read from the 1.12.5 `Assembly-CSharp.dll` with `tools/ildu
   21549.425 s). Tidally locked moons spin once per orbit and `initialRotation` says which side faces the parent
   (Mun 230 gives sub-Kerbin longitude 47.4°E). The table is in `js/data.js` (`rot0`) and `test/gamedata.test.js`.
 
+**Things that turned out not to matter, or to be absent** (read from `Assembly-CSharp.dll` with `tools/ildump`)
+* **Plasma blackout** (`CommNetParams.plasmaBlackout`) is a re-entry transient: `CommNetVessel.CalculatePlasmaMult`
+  looks at a loaded vessel's external temperature, atmospheric density, dynamic pressure × surface speed and the angle
+  to the flow, and `GetSignalStrengthModifier` scales the vessel's signal by the result. It is the only signal
+  multiplier, and it is zero for orbiting and landed vessels, so it has no place in orbit or relay planning.
+* **Perturbations:** stock KSP propagates vessels on patched conics (one two-body orbit per sphere of influence), so a
+  two-body model *is* the game's model. Only the SOI hand-over needed adding (`js/trajectory.js`).
+* **Extended antennas:** `ModuleDataTransmitter.CanComm` returns false for a deployable antenna that is not fully
+  extended. The app has an *extended* switch per antenna entry.
+* **Near Future reflectors:** `ModuleAntennaFeed.ApplyReflectorBonus` adds `AddedRange × FeedScale` to the
+  antenna's power when its feed points at a deployed `ModuleDeployableReflector`. Feed scales are in `Data.FEED_SCALE`
+  and reflector bonuses in `Data.REFLECTORS` (checked by `scripts/check-mod-data.js` against the mod's configs).
+
 ## 3. Bodies and orbits
 
 Stock: elements, radius, GM, rotation and atmosphere heights from the wiki infoboxes (each body's page). Notably the
@@ -130,9 +143,11 @@ Each mod's part configs were read from its GitHub repository and compared with t
 this project. Since 2026-11-21 the check is a script, `node scripts/check-mod-data.js` (also run monthly by a GitHub
 workflow): it shallow-clones the repositories, parses every part with the app's own parser and compares power, type,
 exponent, mass and cost. The 2026-11-21 run matched ReStock+ (4), Near Future Exploration (18), DMagic (5),
-JX2Antenna (3) and ProbesPlus (28 parts) after adding what it found: DMagic's **Soil Moisture Sensor is a 100G
-relay** (its Universal Storage twin is unresearchable and left out) and three new ProbesPlus parts (the Landvermesser antennas). CommNet Antennas
-Extension patches other mods' parts through ModuleManager, so it is still checked by hand (last 2026-09-29).
+JX2Antenna (3), ProbesPlus (28 parts) and CommNet Antennas Extension (6) after adding what it found: DMagic's **Soil
+Moisture Sensor is a 100G relay** (its Universal Storage twin is unresearchable and left out) and three new ProbesPlus
+parts (the Landvermesser antennas). CommNet Antennas Extension patches other mods' parts through ModuleManager
+(`@PART[x]:NEEDS[...]{ @MODULE[...] { @key = value } }`); the script flattens those patches into plain part configs
+(`flattenPatches`) so the same parser and comparison apply.
 
 | Mod | Result |
 |---|---|
@@ -157,8 +172,10 @@ reachability matrix and the difficulty modifiers; the implementation and data ar
 
 * Whether the game's path-finder ever prefers a relayed path over a working direct one (wiki says no).
 * Spin phase and station positions for bodies and sites added by mods (the stock ones are read from the game).
-* Not modelled because nothing verifiable is available: plasma blackout, Near Future reflectors, signal-strength
-  multipliers, orbital perturbations. Hyperbolic (escape) orbits are not imported: a vessel leaving a sphere of
-  influence changes its orbit, which this model does not follow.
-* Two-body orbits only; the game itself is patched-conics, so vessels behave the same way, but Kopernicus binaries
-  (Plock-Karen) are simplified.
+* Not modelled, with reasons in section 2: plasma blackout (re-entry transient only), orbital perturbations (the game
+  has none), mods' own signal multipliers (not looked for in other mods' code).
+* Vessels opted in to *patched conics* follow SOI exits and encounters on a fixed conic (`js/trajectory.js`, at most
+  8 legs over 25 years, no burns). Others stay on one conic about their body. Kopernicus binaries (Plock-Karen) are
+  simplified.
+* The Finder and the Link & relay chain remain range calculators; they report the line-of-sight windows between the two
+  bodies' centres but not a vessel hiding behind its own planet (use the Tracker for that).

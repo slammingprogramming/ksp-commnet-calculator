@@ -10,9 +10,9 @@
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./data.js'), require('./orbits.js'), require('./core.js'));
-  } else root.KSPSim = factory(root.KSPData, root.KSPOrbits, root.KSPCore);
-})(typeof self !== 'undefined' ? self : this, function (Data, Orb, Core) {
+    module.exports = factory(require('./data.js'), require('./orbits.js'), require('./core.js'), require('./trajectory.js'));
+  } else root.KSPSim = factory(root.KSPData, root.KSPOrbits, root.KSPCore, root.KSPTrajectory);
+})(typeof self !== 'undefined' ? self : this, function (Data, Orb, Core, Traj) {
   'use strict';
 
   const DEFAULTS = {
@@ -33,6 +33,13 @@
    * node: {id, name, loc: {type:'orbit', body, orbit} | {type:'landed', body, lat, lon, alt},
    *        antennas: [{id, count}], tracked: bool}
    */
+  /** A time scale for choosing scan steps: the period of a closed orbit, the periapsis passage time of an escape orbit. */
+  function timeScale(p) {
+    if (!p.hyper) return p.period;
+    const rp = Math.abs(p.a) * (p.e - 1);
+    return Orb.TAU * Math.sqrt((rp * rp * rp) / p.gm);
+  }
+
   function createSim(opts) {
     const world = opts.world;
     const st = Object.assign({}, DEFAULTS, opts.settings || {});
@@ -78,7 +85,16 @@
         const b = world.index.get(n.loc.body);
         if (!b) { problems.push('“' + n.name + '”: unknown body ' + n.loc.body); continue; }
         rec._p = Orb.prepare(n.loc.orbit, b.gm);
-        rec.period = rec._p.period;
+        rec.period = timeScale(rec._p);
+        // opt-in patched conics: follow the vessel through sphere-of-influence exits and encounters (escape trajectories, transfers)
+        if (n.loc.patched && opts.trajectory) {
+          const segs = Traj.build(world, b.id, n.loc.orbit, opts.trajectory.t0, opts.trajectory.horizon);
+          if (segs.length > 1) {
+            segs.forEach((sg) => { sg.bodyIdx = sg.body.idx; });
+            rec._segs = segs;
+            rec.period = Math.min.apply(null, segs.map((sg) => timeScale(sg.p)));
+          }
+        }
       } else if (n.loc.type === 'landed') {
         if (!world.index.get(n.loc.body)) { problems.push('“' + n.name + '”: unknown body ' + n.loc.body); continue; }
       } else { problems.push('“' + n.name + '”: unknown location type'); continue; }
@@ -145,11 +161,13 @@
       world.positions(t, bodyPos);
       for (let i = 0; i < n; i++) {
         const r = nodes[i];
-        const bi = bodyIdx[i];
+        let bi = bodyIdx[i];
         if (r.loc.type === 'landed') {
           world.surfacePoint(world.bodies[bi], r.loc.lat, r.loc.lon, r.loc.alt || 0, t, bodyPos, tmp);
         } else {
-          Orb.position(r._p, t, tmp);
+          let p = r._p;
+          if (r._segs) { const sg = Traj.segmentAt(r._segs, t); p = sg.p; bi = sg.bodyIdx; }
+          Orb.position(p, t, tmp);
           tmp[0] += bodyPos[bi * 3]; tmp[1] += bodyPos[bi * 3 + 1]; tmp[2] += bodyPos[bi * 3 + 2];
         }
         nodePos[i * 3] = tmp[0]; nodePos[i * 3 + 1] = tmp[1]; nodePos[i * 3 + 2] = tmp[2];
@@ -243,6 +261,22 @@
       return out;
     }
 
+    /** Position of node i at time t (inertial, Kerbol-centred) into out[0..2]; for drawing trajectories. */
+    function nodePositionAt(i, t, out) {
+      const r = nodes[i];
+      const bp = world.positions(t);
+      let bi = bodyIdx[i];
+      if (r.loc.type === 'landed') world.surfacePoint(world.bodies[bi], r.loc.lat, r.loc.lon, r.loc.alt || 0, t, bp, out);
+      else {
+        let p = r._p;
+        if (r._segs) { const sg = Traj.segmentAt(r._segs, t); p = sg.p; bi = sg.bodyIdx; }
+        Orb.position(p, t, out);
+        out[0] += bp[bi * 3]; out[1] += bp[bi * 3 + 1]; out[2] += bp[bi * 3 + 2];
+        return out;
+      }
+      return out;
+    }
+
     /** Evaluate every tracked source at time t. */
     function evalAt(t) {
       placeNodes(t);
@@ -294,7 +328,7 @@
 
     return {
       world: world, settings: st, nodes: nodes, homeCount: homeCount, trackedIdx: trackedIdx, problems: problems,
-      evalAt: evalAt, evalOne: evalOne, snapshot: snapshot, suggestStep: suggestStep,
+      evalAt: evalAt, evalOne: evalOne, nodePositionAt: nodePositionAt, snapshot: snapshot, suggestStep: suggestStep,
     };
   }
 

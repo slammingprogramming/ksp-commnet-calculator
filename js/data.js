@@ -150,6 +150,29 @@
     ['nfe', 'RA-5B Advanced Relay Antenna', ['nfex-antenna-relay-tdrs-2'], 'relay', 5e8, 0.75, 0.2, 300, 'unmannedTech', 3, 0.6, 28],
   ];
 
+  /* Near Future Exploration reflectors (Source/ModuleAntennaFeed.cs, ModuleDeployableReflector.cs): a deployed reflector that
+   * a feed points at adds AddedRange x FeedScale to that antenna's power. FEED_SCALE comes from the mod's part configs and its
+   * stock / ReStock+ patches (parts without an entry have no feed). Pointing is a build decision: the user ticks it per antenna. */
+  const FEED_SCALE = {
+    'longAntenna': 0.9, 'commDish': 0.9, 'RelayAntenna5': 0.9, 'RelayAntenna50': 0.9, 'RelayAntenna100': 0.9,
+    'restock-antenna-stack-2': 0.9, 'restock-antenna-stack-3': 0.9,
+    'nfex-antenna-deploy-wv3-1': 0.9, 'nfex-antenna-feeder-direct-1': 1, 'nfex-antenna-feeder-relay-1': 1,
+    'nfex-antenna-phased-array-1': 0.75, 'nfex-antenna-phased-array-2': 0.75, 'nfex-antenna-phased-array-3': 0.75,
+    'nfex-antenna-phased-single-1': 0.9, 'nfex-antenna-phased-single-2': 0.9, 'nfex-antenna-phased-single-3': 0.9,
+    'nfex-antenna-relay-tdrs-1': 0.5, 'nfex-antenna-relay-tdrs-2': 0.5, 'nfex-antenna-relay-tiny-1': 0.5,
+    'nfex-antenna-rover-1': 0.5, 'nfex-antenna-rover-2': 0.5, 'nfex-antenna-rover-3': 0.5,
+    'nfex-antenna-static-mini-1': 0.9, 'nfex-antenna-top-dish-1': 0.9, 'nfex-antenna-top-dish-2': 0.9,
+  };
+  // [id, name, AddedRange, mass t, cost, tech]
+  const REFLECTORS = [
+    ['nfe:reflector-side-1', 'RFL-1 Dish Reflector', 9e6, 0.1, 400, 'precisionEngineering'],
+    ['nfe:reflector-side-2', 'RFL-2 Medium Dish Reflector', 7.5e7, 0.25, 800, 'electronics'],
+    ['nfe:reflector-side-3', 'RFL-3 Dish Reflector Array', 8.5e8, 0.45, 1300, 'automation'],
+    ['nfe:reflector-large-1', 'RFL-50 Large Dish Reflector', 9e9, 0.4, 1800, 'advUnmanned'],
+    ['nfe:reflector-huge-1', 'RFL-100 Giant Dish Reflector', 1e11, 0.7, 2400, 'largeUnmanned'],
+    ['nfe:reflector-giant-1', 'RFL-2000 Dish Reflector Array', 5e12, 1.1, 3600, 'largeUnmanned'],
+  ].map((r) => ({ id: r[0], name: r[1], bonus: r[2], mass: r[3], cost: r[4], tech: r[5] }));
+
   const antennas = ROWS.map(function (r) {
     const flags = r[12] || {};
     const pack = PACKS.find((p) => p.id === r[0]);
@@ -169,6 +192,7 @@
       pktInterval: r[10],
       pktEC: r[11],
       builtin: !!flags.builtin,
+      feed: r[2].reduce((f, p) => f || FEED_SCALE[p] || 0, 0),
       ground: !!flags.ground,
       verified: !!(pack && pack.verified),
     };
@@ -295,6 +319,7 @@
     TECH: TECH,
     PACKS: PACKS,
     antennas: antennas,
+    REFLECTORS: REFLECTORS,
     DSN_LEVELS: DSN_LEVELS,
     DIFFICULTY_PRESETS: DIFFICULTY_PRESETS,
     BODY_PACKS: BODY_PACKS,

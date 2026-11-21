@@ -77,3 +77,28 @@ test('the node count is capped and unknown antennas are flagged', () => {
   assert.equal(r.scenario.nodes.length, Share.MAX_NODES);
   assert.ok(r.warnings.some((w) => /not available/.test(w)));
 });
+
+test('retracted and reflector antenna fields survive a round trip and are validated', () => {
+  const sc = { ut: 0, nodes: [{ name: 'p', tracked: true, loc: { type: 'landed', body: 'Mun', lat: 0, lon: 0, alt: 0 },
+    antennas: [{ id: 'stock:RelayAntenna100', count: 1, retracted: true }, { id: 'nfe:nfex-antenna-feeder-relay-1', count: 1, reflector: 'nfe:reflector-large-1' }] }] };
+  const r = Share.parseScenario(JSON.stringify(Share.exportScenario(sc, null)));
+  assert.deepEqual(r.scenario.nodes[0].antennas, sc.nodes[0].antennas);
+  const evil = JSON.stringify({ format: 'kspcomm-scenario', version: 1, nodes: [{ name: 'x', loc: { type: 'landed', body: 'Mun' }, antennas: [{ id: 'a:b', count: 1, retracted: 'yes', reflector: '<script>' }] }] });
+  assert.deepEqual(Share.parseScenario(evil).scenario.nodes[0].antennas, [{ id: 'a:b', count: 1 }]);
+});
+
+test('escape-orbit elements and the patched-conics flag round-trip; inconsistent elements are dropped', () => {
+  const el = { a: -2.5e6, e: 1.8, i: 3, lan: 10, w: 20, m0: -0.4, epoch: 0 };
+  const sc = { ut: 0, nodes: [{ id: 'x', name: 'Escaping', tracked: true, loc: { type: 'orbit', body: 'Kerbin', pe: 0, ap: 0, i: 0, lan: 0, w: 0, phase: 0, patched: true, elements: el }, antennas: [] }] };
+  const r = Share.parseScenario(JSON.stringify(Share.exportScenario(sc, {}, '1.1.0')));
+  assert.ok(!r.error, r.error);
+  assert.equal(r.scenario.nodes[0].loc.patched, true);
+  assert.deepEqual(r.scenario.nodes[0].loc.elements, el);
+  // a < 0 with e < 1 is not a conic: ignored with a warning
+  const bad = JSON.parse(JSON.stringify(Share.exportScenario(sc, {}, '1.1.0')));
+  bad.nodes[0].loc.elements.e = 0.5;
+  const rb = Share.parseScenario(JSON.stringify(bad));
+  assert.ok(!rb.error, rb.error);
+  assert.equal(rb.scenario.nodes[0].loc.elements, undefined);
+  assert.ok(rb.warnings.some((w) => /elements/.test(w)));
+});

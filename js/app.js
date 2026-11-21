@@ -223,9 +223,23 @@
           const n = parseInt(cnt.value, 10);
           if (n >= 1) { entry.count = Math.min(99, n); onChange(); }
         });
-        const sel = antennaSelect(entry.id, (v) => { entry.id = v; onChange(); });
+        const sel = antennaSelect(entry.id, (v) => { entry.id = v; if (!(lookup(v) || {}).feed) delete entry.reflector; render(); onChange(); });
         const rm = h('button', { class: 'btn small ghost danger', type: 'button', 'aria-label': 'Remove antenna', onclick: () => { list.splice(i, 1); render(); onChange(); } }, '✕');
-        box.append(h('div', { class: 'ant-row' }, cnt, sel, rm));
+        // The game ignores antennas that are not fully extended, so a retracted or broken one can be unticked.
+        const ext = h('input', { type: 'checkbox', checked: !entry.retracted, 'aria-label': 'Extended and working' });
+        ext.addEventListener('change', () => { if (ext.checked) delete entry.retracted; else entry.retracted = true; onChange(); });
+        const extLbl = h('label', { class: 'inline', title: 'Untick for a retracted or broken antenna: the game ignores it', style: 'white-space:nowrap' }, ext, 'extended');
+        // Near Future Exploration reflectors boost feeds that point at them (see docs/RESEARCH.md).
+        const a = lookup(entry.id);
+        let refl = null;
+        if (a && a.feed && packOn('nfe')) {
+          refl = h('select', { 'aria-label': 'Reflector this antenna points at' }, h('option', { value: '', text: 'no reflector' }),
+            Data.REFLECTORS.map((r) => h('option', { value: r.id, text: r.name + ' (+' + Core.formatPower(r.bonus * a.feed) + ')' })));
+          refl.value = entry.reflector || '';
+          refl.addEventListener('change', () => { if (refl.value) entry.reflector = refl.value; else delete entry.reflector; onChange(); });
+        }
+        box.append(h('div', { class: 'ant-row' }, cnt, sel, extLbl, rm));
+        if (refl) box.append(h('div', { class: 'ant-row', style: 'margin-left:3.2em' }, refl));
       });
       box.append(h('button', {
         class: 'btn small', type: 'button',
@@ -263,7 +277,19 @@
       note.className = 'hint' + (!empty && !(v >= 0) ? ' bad' : '');
       note.textContent = empty ? 'Type a distance (m, km, Mm, Gm, Tm) or pick two bodies.' : v >= 0 ? '= ' + Core.formatDistance(v, 4) : 'Not a valid distance. Try "35 Gm" or "12000 km".';
     }
+    const sight = h('small', { class: 'hint', style: 'display:block;margin-top:6px' });
+    function refreshSight() {
+      const r = model.from !== model.to ? world.sightReport(model.from, model.to, {
+        occVac: state.settings.occVac, occAtm: state.settings.occAtm, sunOccludes: state.settings.sunOccludes !== false, atmosphereBlocks: !!state.settings.atmoBlocks,
+      }, state.scenario.ut, 8 * Data.YEAR, 4000) : null;
+      if (!r) { sight.textContent = ''; return; }
+      const names = Object.keys(r.by).sort((x, y) => r.by[y] - r.by[x]).map((id) => (world.index.get(id) || { name: id }).name + ' ' + (r.by[id] * 100).toFixed(1) + '%');
+      sight.textContent = r.blocked === 0
+        ? 'Line of sight over the next 8 years: nothing blocks the straight line between the two bodies (centre to centre; a vessel behind its own planet is not considered here, see the Tracker).'
+        : 'Line of sight over the next 8 years: the straight line between the two bodies is blocked ' + (r.blocked * 100).toFixed(1) + '% of the time (' + names.join(', ') + '). Range alone says the link works; these are the windows where it does not without another route or a relay.';
+    }
     function refreshChips() {
+      refreshSight();
       chips.replaceChildren();
       const r = model.from !== model.to ? world.distanceRange(model.from, model.to) : null;
       if (!r) { chips.append(h('small', { class: 'hint', text: 'Pick two different bodies.' })); return; }
@@ -296,7 +322,7 @@
     );
     refreshChips();
     updateNote();
-    return { el: h('div', {}, h('div', { class: 'dist-row' }, input, toggle, note), panel) };
+    return { el: h('div', {}, h('div', { class: 'dist-row' }, input, toggle, note), sight, panel) };
   }
 
   /** Far-end selector shared by the finder and the reach map. model = {farKind, farVessel, farCustom}. */
@@ -1119,7 +1145,8 @@
         h('h3', { text: 'Assumptions and limits' }),
         h('ul', {},
           h('li', {}, 'The occlusion test and the radius rule (body radius × the occlusion modifier, no atmosphere height) are ported from the game’s own code. Kerbol blocks signals like every other body (read from the game’s scene data: the Sun carries a CommNet body too), and signals take the path with the best product of link strengths (also read from the game’s code). The Kerbol switch in the game settings is only for what-if runs.'),
-          h('li', {}, 'Orbits are two-body: no perturbations, so long-term drift (e.g. Mun’s effect on a Kerbin orbit) is ignored. Plasma blackout, extended/retracted antennas and Near Future reflectors are not modelled.'),
+          h('li', {}, 'Orbits are two-body, as in the game (stock KSP has no perturbations). Tick “Follow patched conics” on a vessel to carry it out of a sphere of influence (escape trajectories, transfers); without it a vessel stays on one orbit about its body. Plasma blackout only affects vessels re-entering an atmosphere and is not modelled. Mark an antenna as not extended to leave it out, and pick a Near Future reflector for the antennas that point at one.'),
+          h('li', {}, 'The Antenna finder and the Link & relay chain are range calculators. Under the distance picker they also say how often the line between the two bodies is blocked; a vessel behind its own planet is only shown in the Tracker.'),
           h('li', {}, 'Which side of a tidally locked moon faces its parent, and where the Making History launch-site stations sit, come from the game’s own data files. Bodies from planet packs that don’t state a starting rotation use an approximation.'),
           h('li', {}, 'The distance pickers give the closest and farthest separations two bodies ever reach, a worst/best case rather than today’s distance.'))),
       h('div', { class: 'card' },

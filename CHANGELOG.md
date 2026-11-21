@@ -23,6 +23,14 @@ All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioni
 - Light theme: accent and warning colours and the percentage text now meet WCAG AA contrast.
 
 ### Added
+- **Patched conics (opt-in per vessel).** Escape/hyperbolic orbits are imported from saves and, together with transfer
+  orbits, are carried through sphere-of-influence exits and encounters (new `js/trajectory.js`, hyperbolic Kepler
+  solver and state-vector conversion in `js/orbits.js`). The Tracker draws each leg; the simulator and planner use them.
+- **Near Future reflectors** (pick the reflector an antenna points at) and an **extended** switch per antenna entry
+  (retracted antennas do not count). Both are carried by scenario export/share links.
+- **Finder and Link & relay chain:** a line-of-sight line under the distance picker (how often the straight line between
+  the two bodies is blocked over the next 8 years, and by what).
+- CommNet Antennas Extension is now checked by the mod-data script too (its ModuleManager patches are flattened).
 - **Reach map: line-of-sight check.** Optional extra columns simulate a year of real geometry for a lander on each body.
 - **Scenario export / import** as a JSON file, and a **share link** that carries the whole scenario in the URL
   (compressed in the browser, nothing uploaded). Imports are validated and always ask before replacing anything.
@@ -32,6 +40,10 @@ All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioni
   spoken summary of the connection state.
 - Version label in the page footer, a browser smoke test in CI (`test/smoke/smoke.js`), README screenshots.
 - `tools/unityscan`: a small stdlib-only Python tool that reads the facts above out of a KSP install.
+
+### Researched, deliberately not modelled
+- **Plasma blackout** is a transient for loaded vessels re-entering an atmosphere (the only signal multiplier in the
+  game), so it never affects an orbiting or landed vessel. Stock KSP has no orbital perturbations (patched conics).
 
 ### Faster
 - The relay planner is roughly a third faster on the reference scenarios (cheaper blackout-edge refinement, line-of-sight

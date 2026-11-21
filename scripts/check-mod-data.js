@@ -17,18 +17,29 @@ const { execFileSync } = require('node:child_process');
 const Data = require('../js/data.js');
 const Parsers = require('../js/parsers.js');
 
-// pack id -> public repository. CommNet Antennas Extension patches other mods' parts through ModuleManager, so its
-// values cannot be read with a plain part parser and it is reported as "check by hand".
+// pack id -> public repository. CommNet Antennas Extension defines its parts as ModuleManager patches of RemoteTech's part
+// names (`@PART[RTLongDish2]:AFTER[...] { @MODULE[ModuleDataTransmitter] { @antennaPower = ... } }`); `flattenPatches`
+// turns those into ordinary part definitions (the edited values are what the game ends up with) before they are parsed.
 const REPOS = {
   restock: 'https://github.com/PorktoberRevolution/ReStocked.git',
   nfe: 'https://github.com/post-kerbin-mining-corporation/NearFutureExploration.git',
   dmagic: 'https://github.com/DMagic1/Orbital-Science.git',
   jx2: 'https://github.com/KSPSnark/JX2Antenna.git',
   probesplus: 'https://github.com/raveloda/Coatl-Aerospace.git',
+  cae: 'https://github.com/yalov/CommNetAntennasExtension.git',
 };
+const PATCHED = new Set(['cae']);
 // Parts deliberately left out of the data, with the reason.
 const IGNORE = { dmUSSoilMoisture: 'Universal Storage variant of the Soil Moisture Sensor; its tech node is "Unresearcheable"' };
-const BY_HAND = { cae: 'https://github.com/yalov/CommNetAntennasExtension' };
+
+/** ModuleManager patch -> plain config: `@PART[x]:FOR[y] {` -> `PART { name = x`, `@MODULE[m] {` -> `MODULE { name = m`, `@key`/`%key` -> `key`. */
+function flattenPatches(text) {
+  return text
+    .replace(/[@%]PART\[([^\]]+)\][^\n{]*\s*\{/g, 'PART\n{\nname = $1\n')
+    .replace(/[@%]MODULE\[([^\]]+)\][^\n{]*\s*\{/g, 'MODULE\n{\nname = $1\n')
+    .replace(/^(\s*)[@%]([A-Za-z_]\w*\s*=)/gm, '$1$2');
+}
+module.exports = { flattenPatches };
 
 function* walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -79,15 +90,11 @@ function main() {
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch (e) { continue; }
         if (!/DataTransmitter/.test(text)) continue;
-        try { found.push(...Parsers.parseAntennaCfg(text)); } catch (e) { console.log('   unreadable: ' + path.relative(dir, file)); failed = true; }
+        try { found.push(...Parsers.parseAntennaCfg(PATCHED.has(pack) ? flattenPatches(text) : text)); } catch (e) { console.log('   unreadable: ' + path.relative(dir, file)); failed = true; }
       }
       const issues = compare(pack, found);
       console.log(issues.length ? issues.map((i) => '   ' + i).join('\n') : '   ' + found.length + ' antenna parts read, all match');
       if (issues.length) failed = true;
-    }
-    for (const [pack, url] of Object.entries(BY_HAND)) {
-      if (only && only !== pack) continue;
-      console.log('== ' + pack + ': patches other mods’ parts through ModuleManager; check by hand at ' + url);
     }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -95,4 +102,4 @@ function main() {
   process.exit(failed ? 1 : 0);
 }
 
-main();
+if (require.main === module) main();

@@ -265,3 +265,29 @@ test('a transmitter that does not mention antennaCombinable does not combine (th
   assert.equal(a[0].combinable, false);
   assert.equal(a[0].exp, 0);
 });
+
+test('ModuleManager patches of part definitions flatten to parseable parts (used by scripts/check-mod-data.js)', () => {
+  const { flattenPatches } = require('../scripts/check-mod-data.js');
+  const patch = `@PART[RTShortDish2]:AFTER[RemoteTech-Antennas]{
+	%TechRequired = unmannedTech
+	@cost = 2000
+	@mass = 0.21
+	@MODULE[ModuleDataTransmitter]
+	{
+		@antennaType = RELAY
+		@antennaPower = 7000000000
+		@antennaCombinable = True
+	}
+	%MODULE[ModuleCargoPart]
+	{
+		%packedVolume = 500
+	}
+}`;
+  const a = P.parseAntennaCfg(flattenPatches(patch));
+  assert.equal(a.length, 1);
+  assert.equal(a[0].partName, 'RTShortDish2');
+  assert.equal(a[0].type, 'relay');
+  assert.equal(a[0].power, 7e9);
+  assert.equal(a[0].mass, 0.21);
+  assert.equal(a[0].tech, 'unmannedTech');
+});

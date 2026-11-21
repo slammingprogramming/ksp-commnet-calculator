@@ -132,3 +132,46 @@ test('actual separation at a time lies between the closest and farthest ever', (
   }
   near(stock.distanceAt('Kerbin', 'Mun', 12345), 12e6, 1e-9);
 });
+
+test('sightReport: Kerbol blocks Kerbin-Moho at conjunction, nothing blocks Kerbin-Mun, switching Kerbol off clears it', () => {
+  const o = { occVac: 0.9, occAtm: 0.75, sunOccludes: true };
+  const moho = stock.sightReport('Kerbin', 'Moho', o, 0, 8 * Data.YEAR, 4000);
+  assert.ok(moho.by.Kerbol > 0.002 && moho.blocked < 0.05, JSON.stringify(moho));
+  assert.equal(stock.sightReport('Kerbin', 'Mun', o, 0, 8 * Data.YEAR, 400).blocked, 0);
+  assert.equal(stock.sightReport('Kerbin', 'Moho', Object.assign({}, o, { sunOccludes: false }), 0, 8 * Data.YEAR, 4000).by.Kerbol, undefined);
+  assert.equal(stock.sightReport('Kerbin', 'Kerbin', o, 0, 1, 10), null);
+  // a bigger occlusion modifier can only block more
+  const hard = stock.sightReport('Kerbin', 'Moho', { occVac: 1, occAtm: 1, sunOccludes: true }, 0, 8 * Data.YEAR, 4000);
+  assert.ok(hard.blocked >= moho.blocked);
+});
+
+test('orbits: hyperbolic propagation and state-vector round trip (ellipses, hyperbolas, retrograde, equatorial)', () => {
+  const gm = 3.5316e12;
+  const cases = [
+    { a: 1.2e6, e: 0.3, i: 28, lan: 70, w: 40, m0: 1.1, epoch: 0 },
+    { a: -9e5, e: 1.6, i: 12, lan: 200, w: 310, m0: -0.7, epoch: 0 },
+    { a: 7e5, e: 0.05, i: 0, lan: 0, w: 33, m0: 2, epoch: 0 },
+    { a: 7e5, e: 0.05, i: 180, lan: 0, w: 33, m0: 2, epoch: 0 },
+    { a: 2e6, e: 0.7, i: 120, lan: 10, w: 355, m0: 5, epoch: 0 },
+    { a: -3e6, e: 2.5, i: 90, lan: 45, w: 120, m0: 0.2, epoch: 0 },
+  ];
+  for (const c of cases) {
+    const p = Orb.prepare(c, gm);
+    for (const t of [0, 1500, 9000]) {
+      const r = Orb.position(p, t, [0, 0, 0]), v = Orb.velocity(p, t, [0, 0, 0]);
+      // energy and angular momentum agree with the orbit
+      const rl = Math.hypot(...r), v2 = v[0] ** 2 + v[1] ** 2 + v[2] ** 2;
+      near(v2 / 2 - gm / rl, -gm / (2 * c.a), 1e-9);
+      const el = Orb.elementsFromState(r, v, gm, t);
+      const q = Orb.prepare(el, gm);
+      for (const dt of [0, 600, 5000]) {
+        const r1 = Orb.position(p, t + dt, [0, 0, 0]), r2 = Orb.position(q, t + dt, [0, 0, 0]);
+        assert.ok(Math.hypot(r1[0] - r2[0], r1[1] - r2[1], r1[2] - r2[2]) < 1e-3 * Math.max(1, rl) * 1e-3 + 1e-3, JSON.stringify(c) + ' t=' + t + ' dt=' + dt);
+      }
+    }
+  }
+  // velocity is the derivative of position
+  const p = Orb.prepare(cases[1], gm);
+  const a = Orb.position(p, 1000, [0, 0, 0]), b = Orb.position(p, 1001, [0, 0, 0]), v = Orb.velocity(p, 1000.5, [0, 0, 0]);
+  for (let k = 0; k < 3; k++) near(b[k] - a[k], v[k], 1e-5);
+});

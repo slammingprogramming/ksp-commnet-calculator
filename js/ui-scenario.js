@@ -36,11 +36,11 @@
     if (n.loc.type === 'landed') {
       return { id: n.id, name: n.name, tracked: n.tracked, planned: n.planned, group: n.group, antennas: n.antennas, loc: { type: 'landed', body: b.id, lat: n.loc.lat, lon: n.loc.lon, alt: n.loc.alt || 0 } };
     }
-    const lo = w.altitudeLimits(b.id);
-    void lo;
+    // An imported conic (escape trajectory, transfer) carries its elements; otherwise they come from altitudes.
+    const orbit = n.loc.elements ? n.loc.elements : Orb.orbitFromAltitudes(b, n.loc.pe, n.loc.ap, n.loc.i, n.loc.lan, n.loc.w, n.loc.phase);
     return {
       id: n.id, name: n.name, tracked: n.tracked, planned: n.planned, group: n.group, antennas: n.antennas,
-      loc: { type: 'orbit', body: b.id, orbit: Orb.orbitFromAltitudes(b, n.loc.pe, n.loc.ap, n.loc.i, n.loc.lan, n.loc.w, n.loc.phase) },
+      loc: { type: 'orbit', body: b.id, orbit: orbit, patched: !!n.loc.patched },
     };
   }
 
@@ -50,11 +50,13 @@
     const w = App.world;
     const b = w.index.get(n.loc.body);
     if (!b) return [{ level: 'bad', text: 'Body “' + n.loc.body + '” is not available (enable its system in the game settings).' }];
-    if (n.loc.type === 'orbit') {
+    if (n.loc.type === 'orbit' && n.loc.elements) {
+      msgs.push({ level: 'hint', text: n.loc.patched ? 'Imported conic. With patched conics on, the vessel follows its sphere-of-influence exits and encounters (no further burns).' : 'Imported conic, drawn about ' + b.name + ' only: tick patched conics to follow it out of the sphere of influence.' });
+    } else if (n.loc.type === 'orbit') {
       const lo = Math.min(n.loc.pe, n.loc.ap), hi = Math.max(n.loc.pe, n.loc.ap);
       if (lo < 0) msgs.push({ level: 'bad', text: 'Periapsis is below the surface.' });
       else if (b.hasAtmo && lo < b.atmo) msgs.push({ level: 'warn', text: 'Periapsis is inside the atmosphere (' + Core.formatDistance(b.atmo) + ' tall).' });
-      if (b.radius + hi > b.soiRadius) msgs.push({ level: 'bad', text: 'Apoapsis is outside the sphere of influence (' + Core.formatDistance(b.soiRadius - b.radius) + ' altitude).' });
+      if (b.radius + hi > b.soiRadius) msgs.push(n.loc.patched ? { level: 'hint', text: 'Apoapsis is outside ' + b.name + '\u2019s sphere of influence: the vessel is followed onto its next orbit (patched conics).' } : { level: 'bad', text: 'Apoapsis is outside the sphere of influence (' + Core.formatDistance(b.soiRadius - b.radius) + ' altitude). Tick patched conics to follow it out.' });
     } else if (b.approxSpin) {
       msgs.push({ level: 'warn', text: b.name + ' is tidally locked; its near/far side longitudes are approximate here.' });
     }
@@ -65,9 +67,10 @@
   function orbitSummary(n) {
     const b = App.world.index.get(n.loc.body);
     if (!b) return '';
-    const o = Orb.orbitFromAltitudes(b, n.loc.pe, n.loc.ap, n.loc.i, n.loc.lan, n.loc.w, n.loc.phase);
-    if (!(o.a > 0)) return '';
+    const o = n.loc.elements ? n.loc.elements : Orb.orbitFromAltitudes(b, n.loc.pe, n.loc.ap, n.loc.i, n.loc.lan, n.loc.w, n.loc.phase);
+    if (!o.a) return '';
     const p = Orb.prepare(o, b.gm);
+    if (o.e > 1) return 'escape trajectory · eccentricity ' + o.e.toFixed(3) + ' · periapsis altitude ' + Core.formatDistance(Math.abs(o.a) * (o.e - 1) - b.radius) + ' · excess speed ' + Math.round(Math.sqrt(b.gm / Math.abs(o.a))) + ' m/s';
     return 'period ' + Orb.formatDuration(p.period) + ' · eccentricity ' + o.e.toFixed(3) + ' · SMA ' + Core.formatDistance(o.a);
   }
 
@@ -123,13 +126,24 @@
       return { node: newNode({ name: v.name, antennas: antennas, loc: { type: 'landed', body: b.id, lat: v.lat, lon: v.lon, alt: Math.max(0, v.alt || 0) } }) };
     }
     const o = v.orbit;
-    if (!(o.sma > 0) || !(o.ecc < 1)) return { error: 'not on a closed orbit' };
+    if (!isFinite(o.sma) || !isFinite(o.ecc) || o.sma === 0) return { error: 'no usable orbit' };
+    if (o.ecc >= 1 || o.sma < 0) {
+      // escape trajectory: keep the exact conic and follow it through sphere-of-influence changes
+      const na = Math.sqrt(b.gm / Math.pow(Math.abs(o.sma), 3));
+      return {
+        node: newNode({
+          name: v.name, antennas: antennas,
+          loc: { type: 'orbit', body: b.id, patched: true, elements: { a: -Math.abs(o.sma), e: Math.max(1.000001, o.ecc), i: o.inc, lan: o.lan, w: o.lpe, m0: o.mna - na * o.eph, epoch: 0 } },
+        }),
+      };
+    }
     const n = Math.sqrt(b.gm / (o.sma * o.sma * o.sma));
     const m0 = (((o.mna - n * o.eph) % Orb.TAU) + Orb.TAU) % Orb.TAU; // mean anomaly at UT 0
+    const leaves = b.soiRadius < o.sma * (1 + o.ecc); // a transfer orbit that crosses the sphere-of-influence edge
     return {
       node: newNode({
         name: v.name, antennas: antennas,
-        loc: { type: 'orbit', body: b.id, pe: o.sma * (1 - o.ecc) - b.radius, ap: o.sma * (1 + o.ecc) - b.radius, i: o.inc, lan: o.lan, w: o.lpe, phase: m0 / Orb.DEG },
+        loc: { type: 'orbit', body: b.id, pe: o.sma * (1 - o.ecc) - b.radius, ap: o.sma * (1 + o.ecc) - b.radius, i: o.inc, lan: o.lan, w: o.lpe, phase: m0 / Orb.DEG, patched: leaves },
       }),
     };
   }
@@ -270,7 +284,9 @@
 
       const dist = { fmt: (v) => Core.formatDistance(v, 5), parse: Core.parseDistance };
       let fields;
-      if (n.loc.type === 'orbit') {
+      if (n.loc.type === 'orbit' && n.loc.elements) {
+        fields = [h('div', { class: 'hint', text: 'Orbit imported from the save (exact conic elements). Remove and re-add to change it, or use the quick placements for a new one.' })];
+      } else if (n.loc.type === 'orbit') {
         fields = [
           numField('Periapsis altitude', () => n.loc.pe, (v) => { n.loc.pe = v; }, dist),
           numField('Apoapsis altitude', () => n.loc.ap, (v) => { n.loc.ap = v; }, dist),
@@ -287,6 +303,8 @@
         ];
       }
       const summary = h('div', { class: 'stats', text: n.loc.type === 'orbit' ? orbitSummary(n) : '' });
+      const patched = n.loc.type === 'orbit' ? h('label', { class: 'inline', style: 'color:var(--text);display:flex;margin-top:6px', title: 'Follow the vessel when it leaves a body\u2019s sphere of influence or enters another (patched conics, no further burns)' },
+        h('input', { type: 'checkbox', checked: !!n.loc.patched, onchange: (e) => { if (e.target.checked) n.loc.patched = true; else delete n.loc.patched; rerender(); } }), 'Follow patched conics (escape and encounter, no more burns)') : null;
       const msgs = checkNode(n).map((m) => h('div', { class: m.level === 'bad' ? 'bad' : m.level === 'warn' ? 'warn' : 'hint', style: 'font-size:0.85rem', text: m.text }));
 
       return h('div', { class: 'node ' + (n.planned ? 'relay' : n.tracked ? 'endpoint' : 'dsn') },
@@ -298,7 +316,7 @@
             h('button', { class: 'btn small ghost danger', type: 'button', onclick: () => { sc.nodes.splice(idx, 1); rerender(); } }, 'Remove'))),
         h('div', { class: 'row' }, h('div', { class: 'field' }, h('label', { text: 'Location' }), type), h('div', { class: 'field' }, h('label', { text: n.loc.type === 'orbit' ? 'Orbits' : 'On' }), body), h('div', { class: 'field' }, h('label', { text: 'Or' }), tpl)),
         h('div', { class: 'row', style: 'margin-top:8px' }, fields),
-        summary, msgs.length ? h('div', {}, msgs) : null,
+        summary, patched, msgs.length ? h('div', {}, msgs) : null,
         h('div', { class: 'field', style: 'margin-top:8px' }, h('label', { text: 'Antennas' }), App.antennaEditor(n.antennas, changed)));
     }
 
@@ -382,7 +400,7 @@
   const simNodes = () => App.state.scenario.nodes.map(toSimNode).filter(Boolean);
   function getSim() {
     if (cacheRev !== App.rev() || !cacheSim) {
-      cacheSim = Sim.createSim({ world: App.world, lookup: App.lookup, settings: App.simSettings(), nodes: simNodes() });
+      cacheSim = Sim.createSim({ world: App.world, lookup: App.lookup, settings: App.simSettings(), nodes: simNodes(), trajectory: { t0: App.state.scenario.ut, horizon: 25 * Data.YEAR } });
       cacheRev = App.rev();
     }
     return cacheSim;

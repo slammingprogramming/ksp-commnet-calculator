@@ -138,7 +138,7 @@
     const pool = P.pool || Data.antennas.filter((a) => a.pack === 'stock');
     const tiers = relayTiers(pool, settings.rangeMod);
     const ample = tiers.length ? tiers[tiers.length - 1].setup : [{ id: 'stock:RelayAntenna100', count: 3 }];
-    const mk = (ns, s) => Sim.createSim({ world, lookup, settings: s || settings, nodes: ns });
+    const mk = (ns, s) => Sim.createSim({ world, lookup, settings: s || settings, nodes: ns, trajectory: P.trajectory || { t0: P.t0, horizon: P.horizon } });
     const fullDt = (sim) => Math.max(sim.suggestStep(24), P.horizon / 90000);
     // Comparing candidates only needs the ranking, so scan them at half resolution; accepted designs are re-scanned
     // at full resolution (blackout edges are refined to 0.5 s either way, only blackouts shorter than the step can slip by).
@@ -436,7 +436,7 @@
    */
   function* evaluateGen(P) {
     const settings = Object.assign({}, P.settings, { minSignal: P.minSignal || 0 });
-    const sim = Sim.createSim({ world: P.world, lookup: P.lookup, settings: settings, nodes: P.nodes });
+    const sim = Sim.createSim({ world: P.world, lookup: P.lookup, settings: settings, nodes: P.nodes, trajectory: { t0: P.t0, horizon: P.horizon } });
     const dt = Math.max(sim.suggestStep(24), P.horizon / 90000);
     const res = yield* runScan(sim, P.t0, P.t0 + P.horizon, dt);
     return { sources: res.sources, causes: causeTable(res), worst: worstUptime(res), mean: meanUptime(res), problems: sim.problems };
@@ -464,7 +464,7 @@
           id: 'site:' + i, name: 'site ' + i, tracked: true, loc: { type: 'landed', body: id, lat: p.lat, lon: p.lon, alt: 0 },
           antennas: [], powerOverride: { own: P.power, relay: P.power },
         }));
-        const sim = Sim.createSim({ world: world, lookup: P.lookup, settings: Object.assign({}, P.settings, { minSignal: P.minSignal || 0 }), nodes: nodes });
+        const sim = Sim.createSim({ world: world, lookup: P.lookup, settings: Object.assign({}, P.settings, { minSignal: P.minSignal || 0 }), nodes: nodes, trajectory: { t0: P.t0, horizon: P.horizon } });
         const dt = Math.max(60, sim.suggestStep(12));
         const span = Math.min(20 * Data.DAY, Math.max(2 * Data.DAY, b.rotPeriod * 1.05));
         let mean = 0, worst = 1, best = 0;
@@ -498,7 +498,7 @@
         nodes.push({ id: 'cell:' + cells.length, name: 'cell', tracked: true, cell: true, loc: { type: 'landed', body: bodyId, lat: lat, lon: lon, alt: 0 }, antennas: [{ id: 'stock:longAntenna', count: 1 }] });
       }
     }
-    const sim = Sim.createSim({ world: world, lookup: P.lookup, settings: Object.assign({}, P.settings, { minSignal: P.minSignal || 0 }), nodes: nodes });
+    const sim = Sim.createSim({ world: world, lookup: P.lookup, settings: Object.assign({}, P.settings, { minSignal: P.minSignal || 0 }), nodes: nodes, trajectory: { t0: P.t0, horizon: P.horizon } });
     const dt = Math.max(30, sim.suggestStep(16));
     const up = new Float64Array(cells.length);
     for (let w = 0; w < windows; w++) {

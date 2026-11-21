@@ -110,6 +110,51 @@
       return buf;
     };
 
+    /**
+     * How often is the straight line between two body centres blocked by other bodies, sampled over a period? Same
+     * occlusion test as the simulator (CommNet's OccluderHorizonCulling.Raycast); the two bodies themselves are not
+     * occluders and neither are their own planets or moons, so this answers "do other planets and Kerbol get in the way", not "is my vessel behind its own planet".
+     * opt: { occVac, occAtm, sunOccludes, atmosphereBlocks }. Returns { samples, blocked (0..1), by: {bodyId: 0..1} } or null.
+     */
+    world.sightReport = function (aId, bId, opt, t0, horizon, samples) {
+      const a = index.get(aId), b = index.get(bId);
+      if (!a || !b || a === b) return null;
+      const nb = ordered.length;
+      const occ = new Float64Array(nb);
+      // A vessel near either end sits inside that planet's own system, so its planet and moons are not "in between";
+      // only the rest of the system (other planets, their moons, Kerbol) counts.
+      const planetOf = (bd) => { let x = bd; while (x.parentBody && x.depth > 1) x = x.parentBody; return x; };
+      const pa = planetOf(a), pb = planetOf(b);
+      ordered.forEach((bd, i) => {
+        if (bd === a || bd === b || (bd.star && opt.sunOccludes === false)) return;
+        const pbd = planetOf(bd);
+        if (!bd.star && (pbd === pa || pbd === pb)) return;
+        occ[i] = (bd.radius + (opt.atmosphereBlocks ? bd.atmo : 0)) * (bd.hasAtmo ? opt.occAtm : opt.occVac);
+      });
+      const pos = new Float64Array(nb * 3);
+      const by = {};
+      let blocked = 0;
+      const n = Math.max(2, samples | 0);
+      for (let k = 0; k < n; k++) {
+        world.positions(t0 + (horizon * k) / (n - 1), pos);
+        const ai = a.idx * 3, bi = b.idx * 3;
+        for (let i = 0; i < nb; i++) {
+          if (!(occ[i] > 0)) continue;
+          const r = occ[i];
+          let px = (pos[ai] - pos[i * 3]) / r, py = (pos[ai + 1] - pos[i * 3 + 1]) / r, pz = (pos[ai + 2] - pos[i * 3 + 2]) / r;
+          let qx = (pos[bi] - pos[i * 3]) / r, qy = (pos[bi + 1] - pos[i * 3 + 1]) / r, qz = (pos[bi + 2] - pos[i * 3 + 2]) / r;
+          if (px * px + py * py + pz * pz > qx * qx + qy * qy + qz * qz) { const tx = px, ty = py, tz = pz; px = qx; py = qy; pz = qz; qx = tx; qy = ty; qz = tz; }
+          const A = px * px + py * py + pz * pz - 1;
+          const dx = qx - px, dy = qy - py, dz = qz - pz;
+          const L = -(dx * px + dy * py + dz * pz);
+          const hit = A < 0 ? L > 0 : L > A && (L * L) / (dx * dx + dy * dy + dz * dz) > A;
+          if (hit) { blocked++; by[ordered[i].id] = (by[ordered[i].id] || 0) + 1; break; }
+        }
+      }
+      Object.keys(by).forEach((id) => { by[id] /= n; });
+      return { samples: n, blocked: blocked / n, by: by };
+    };
+
     /** Rotation angle (rad) of a body about its spin axis at time t. */
     world.rotationAngle = function (body, t) {
       return (body.rot0 || 0) * DEG + (Orb.TAU * t) / body.rotPeriod;

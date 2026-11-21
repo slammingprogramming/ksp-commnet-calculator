@@ -201,3 +201,20 @@ test('antennaPowers follows the game\'s UpdateComm logic', () => {
   // a lone strong direct antenna beats a weak stack
   assert.equal(Core.antennaPowers([A(2e9, 'direct', true, 0.75, 1), A(5e6, 'relay', true, 0.75, 1)]).own > 2e9, true);
 });
+
+test('retracted antennas are ignored and an NFE reflector adds AddedRange x FeedScale to a feed', () => {
+  const lk = (id) => Data.antennas.find((a) => a.id === id);
+  const ra = (extra) => Object.assign({ id: 'stock:RelayAntenna100', count: 2 }, extra);
+  assert.equal(Core.vesselStats([ra()], lk, 1).relay, Core.vesselStats([ra({ retracted: false })], lk, 1).relay);
+  const none = Core.vesselStats([ra({ retracted: true })], lk, 1);
+  assert.equal(none.own, 5000, 'only the built-in antenna is left');
+  assert.equal(none.relay, 0);
+  // feed relay antenna: 5k base + 9 G (large reflector) x feed scale 1
+  const feed = Core.vesselStats([{ id: 'nfe:nfex-antenna-feeder-relay-1', count: 1, reflector: 'nfe:reflector-large-1' }], lk, 1);
+  assert.equal(feed.relay, 5000 + 9e9);
+  // a stock RA-100 has feed scale 0.9 (NFE patch); an antenna without a feed ignores the reflector
+  const ra100 = Core.vesselStats([{ id: 'stock:RelayAntenna100', count: 1, reflector: 'nfe:reflector-huge-1' }], lk, 1);
+  assert.equal(ra100.relay, 100e9 + 0.9 * 100e9);
+  const nofeed = Core.vesselStats([{ id: 'stock:HighGainAntenna', count: 1, reflector: 'nfe:reflector-huge-1' }], lk, 1);
+  assert.equal(nofeed.own, 15e9);
+});

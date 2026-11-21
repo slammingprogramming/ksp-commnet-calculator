@@ -35,7 +35,7 @@
   function exportScenario(scenario, settings, appVersion) {
     const out = { format: FORMAT, version: VERSION, app: appVersion || null, ut: scenario.ut || 0, nodes: [] };
     for (const n of scenario.nodes) {
-      const o = { name: n.name, tracked: n.tracked !== false, loc: Object.assign({}, n.loc), antennas: (n.antennas || []).map((a) => ({ id: a.id, count: a.count })) };
+      const o = { name: n.name, tracked: n.tracked !== false, loc: Object.assign({}, n.loc), antennas: (n.antennas || []).map((a) => Object.assign({ id: a.id, count: a.count }, a.retracted ? { retracted: true } : {}, a.reflector ? { reflector: a.reflector } : {})) };
       if (n.planned) { o.planned = true; if (n.group) o.group = n.group; }
       out.nodes.push(o);
     }
@@ -54,10 +54,19 @@
       return { type: 'landed', body: body, lat: num(loc.lat, -90, 90, 0), lon: num(loc.lon, -360, 360, 0), alt: num(loc.alt, -1e6, 1e8, 0) };
     }
     if (loc.type === 'orbit') {
-      return {
+      const out = {
         type: 'orbit', body: body, pe: num(loc.pe, 0, 1e13, 100000), ap: num(loc.ap, 0, 1e13, 100000),
         i: num(loc.i, -180, 180, 0), lan: num(loc.lan, -720, 720, 0), w: num(loc.w, -720, 720, 0), phase: num(loc.phase, -720, 720, 0),
       };
+      if (loc.patched === true) out.patched = true;
+      const el = loc.elements;
+      if (el && typeof el === 'object') {
+        const a = num(el.a, -1e15, 1e15, NaN), e = num(el.e, 0, 50, NaN);
+        if (isFinite(a) && a !== 0 && isFinite(e) && (a > 0 ? e < 1 : e > 1)) {
+          out.elements = { a: a, e: e, i: num(el.i, -180, 180, 0), lan: num(el.lan, -720, 720, 0), w: num(el.w, -720, 720, 0), m0: num(el.m0, -1e9, 1e9, 0), epoch: num(el.epoch, -1e13, 1e13, 0) };
+        } else warn.push('\u201c' + name + '\u201d: invalid orbit elements ignored');
+      }
+      return out;
     }
     warn.push('“' + name + '”: unknown location type, skipped');
     return null;
@@ -92,7 +101,10 @@
         if (!a || typeof a.id !== 'string' || !ID_RE.test(a.id)) continue;
         const count = Math.floor(num(a.count, 0, 99, 1));
         if (hasAntenna && !hasAntenna(a.id)) warnings.push('“' + name + '”: antenna ' + a.id + ' is not available here (enable its pack or import it); it is kept but ignored.');
-        antennas.push({ id: a.id, count: count });
+        const ant = { id: a.id, count: count };
+        if (a.retracted === true) ant.retracted = true;
+        if (typeof a.reflector === 'string' && ID_RE.test(a.reflector)) ant.reflector = a.reflector;
+        antennas.push(ant);
       }
       const node = { name: name, tracked: n.tracked !== false, loc: loc, antennas: antennas };
       if (n.planned === true) { node.planned = true; if (typeof n.group === 'string') node.group = text(n.group, 40, ''); }

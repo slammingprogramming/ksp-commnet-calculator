@@ -40,18 +40,112 @@
   function prepare(orbit, gm) {
     const O = orbit.lan * DEG, w = orbit.w * DEG, i = orbit.i * DEG;
     const cO = Math.cos(O), sO = Math.sin(O), cw = Math.cos(w), sw = Math.sin(w), ci = Math.cos(i), si = Math.sin(i);
-    const n = Math.sqrt(gm / (orbit.a * orbit.a * orbit.a));
+    // Escape trajectories have a < 0 and e > 1 (as in KSP's save files); their "period" is only a time scale.
+    const hyper = orbit.e > 1;
+    const aa = Math.abs(orbit.a);
+    const n = Math.sqrt(gm / (aa * aa * aa));
     return {
-      a: orbit.a, e: orbit.e, m0: orbit.m0, epoch: orbit.epoch || 0, n: n, period: TAU / n,
-      b: orbit.a * Math.sqrt(1 - orbit.e * orbit.e),
+      a: orbit.a, e: orbit.e, m0: orbit.m0, epoch: orbit.epoch || 0, n: n, period: TAU / n, hyper: hyper, gm: gm,
+      b: aa * Math.sqrt(Math.abs(1 - orbit.e * orbit.e)),
       px: cO * cw - sO * sw * ci, py: sO * cw + cO * sw * ci, pz: sw * si,
       qx: -cO * sw - sO * cw * ci, qy: -sO * sw + cO * cw * ci, qz: cw * si,
     };
   }
 
+  /** Solve M = e sinh H - H for H (hyperbolic orbits). */
+  function solveHyperbolic(M, e) {
+    let H = Math.asinh(M / e);
+    if (!isFinite(H)) H = 0;
+    for (let i = 0; i < 60; i++) {
+      const f = e * Math.sinh(H) - H - M;
+      const d = f / (e * Math.cosh(H) - 1);
+      H -= d;
+      if (Math.abs(d) < 1e-13 * Math.max(1, Math.abs(H))) break;
+    }
+    return H;
+  }
+
+  /** Velocity relative to the parent at time t (m/s), written into out[0..2]. */
+  function velocity(p, t, out) {
+    const M = p.m0 + p.n * (t - p.epoch);
+    let vx, vy;
+    if (p.hyper) {
+      const H = solveHyperbolic(M, p.e);
+      const dH = p.n / (p.e * Math.cosh(H) - 1);
+      vx = -Math.abs(p.a) * Math.sinh(H) * dH;
+      vy = p.b * Math.cosh(H) * dH;
+    } else {
+      const E = solveKepler(M, p.e);
+      const dE = p.n / (1 - p.e * Math.cos(E));
+      vx = -p.a * Math.sin(E) * dE;
+      vy = p.b * Math.cos(E) * dE;
+    }
+    out[0] = p.px * vx + p.qx * vy;
+    out[1] = p.py * vx + p.qy * vy;
+    out[2] = p.pz * vx + p.qz * vy;
+    return out;
+  }
+
+  /**
+   * Orbit elements (same shape as `orbit` in prepare()) from a position/velocity state about a body with parameter gm,
+   * valid at time t. Works for ellipses and hyperbolas; returns null for a (near) parabola or a degenerate state.
+   */
+  function elementsFromState(r, v, gm, t) {
+    const rl = Math.hypot(r[0], r[1], r[2]);
+    const v2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    const hx = r[1] * v[2] - r[2] * v[1], hy = r[2] * v[0] - r[0] * v[2], hz = r[0] * v[1] - r[1] * v[0];
+    const hl = Math.hypot(hx, hy, hz);
+    if (!(rl > 0) || !(hl > 0)) return null;
+    const rv = r[0] * v[0] + r[1] * v[1] + r[2] * v[2];
+    // eccentricity vector
+    const ex = ((v2 - gm / rl) * r[0] - rv * v[0]) / gm, ey = ((v2 - gm / rl) * r[1] - rv * v[1]) / gm, ez = ((v2 - gm / rl) * r[2] - rv * v[2]) / gm;
+    const e = Math.hypot(ex, ey, ez);
+    const energy = v2 / 2 - gm / rl;
+    if (Math.abs(energy) < 1e-12 * gm / rl) return null;
+    const a = -gm / (2 * energy);
+    if (e < 1e-10) return null; // exactly circular: callers nudge e (their orbit is the same to any useful precision)
+    const P = [ex / e, ey / e, ez / e];
+    const hh = [hx / hl, hy / hl, hz / hl];
+    const Q = [hh[1] * P[2] - hh[2] * P[1], hh[2] * P[0] - hh[0] * P[2], hh[0] * P[1] - hh[1] * P[0]];
+    const ci = hh[2];
+    const si = Math.hypot(P[2], Q[2]);
+    let inc, lan, w;
+    if (si > 1e-9) {
+      inc = Math.atan2(si, ci);
+      lan = Math.atan2(hh[0], -hh[1]);
+      w = Math.atan2(P[2], Q[2]);
+    } else {
+      inc = ci > 0 ? 0 : Math.PI;
+      lan = 0;
+      w = ci > 0 ? Math.atan2(P[1], P[0]) : Math.atan2(-P[1], P[0]);
+    }
+    // true anomaly from the position in the perifocal frame
+    const xp = r[0] * P[0] + r[1] * P[1] + r[2] * P[2];
+    const yp = r[0] * Q[0] + r[1] * Q[1] + r[2] * Q[2];
+    const nu = Math.atan2(yp, xp);
+    let M;
+    if (e < 1) {
+      const E = 2 * Math.atan2(Math.sqrt(1 - e) * Math.sin(nu / 2), Math.sqrt(1 + e) * Math.cos(nu / 2));
+      M = E - e * Math.sin(E);
+    } else {
+      const H = 2 * Math.atanh(Math.sqrt((e - 1) / (e + 1)) * Math.tan(nu / 2));
+      M = e * Math.sinh(H) - H;
+    }
+    return { a: a, e: e, i: inc / DEG, lan: lan / DEG, w: w / DEG, m0: M, epoch: t };
+  }
+
   /** Position relative to the parent at time t, written into out[0..2]. */
   function position(p, t, out) {
     const M = p.m0 + p.n * (t - p.epoch);
+    if (p.hyper) {
+      const H = solveHyperbolic(M, p.e);
+      const x = Math.abs(p.a) * (p.e - Math.cosh(H));
+      const y = p.b * Math.sinh(H);
+      out[0] = p.px * x + p.qx * y;
+      out[1] = p.py * x + p.qy * y;
+      out[2] = p.pz * x + p.qz * y;
+      return out;
+    }
     const E = solveKepler(M, p.e);
     const x = p.a * (Math.cos(E) - p.e);
     const y = p.b * Math.sin(E);
@@ -141,6 +235,9 @@
     solveKepler: solveKepler,
     prepare: prepare,
     position: position,
+    velocity: velocity,
+    solveHyperbolic: solveHyperbolic,
+    elementsFromState: elementsFromState,
     positionAtE: positionAtE,
     orbitFromAltitudes: orbitFromAltitudes,
     circularPeriod: circularPeriod,

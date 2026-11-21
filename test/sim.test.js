@@ -159,3 +159,31 @@ test('evalOne agrees with evalAt, and a coarse edge tolerance changes the uptime
   while (!sc.run(1000)) { /* run to the end */ }
   fine.sources.forEach((s, i) => assert.ok(Math.abs(s.uptime - sc.result.sources[i].uptime) < 0.002, s.name));
 });
+
+test('patched conics: an escape probe is carried out of Kerbin\'s sphere of influence and on around Kerbol; without the flag it stays on its Kerbin conic', () => {
+  const kerbin = world.index.get('Kerbin');
+  const rp = kerbin.radius + 120000, vinf = 1000;
+  const a = -kerbin.gm / (vinf * vinf);
+  const orbitEl = { a: a, e: 1 - rp / a, i: 0, lan: 0, w: 0, m0: -0.5, epoch: 0 };
+  const probe = (patched) => ({ id: 'esc', name: 'esc', tracked: true, loc: { type: 'orbit', body: 'Kerbin', orbit: orbitEl, patched }, antennas: [{ id: K.hg55, count: 1 }] });
+  const traj = { t0: 0, horizon: 2 * Data.YEAR };
+  const on = Sim.createSim({ world, lookup, settings: settings({ extraStations: true }), nodes: [probe(true)], trajectory: traj });
+  const off = Sim.createSim({ world, lookup, settings: settings({ extraStations: true }), nodes: [probe(false)], trajectory: traj });
+  const idx = on.nodes.findIndex((n) => n.name === 'esc');
+  assert.ok(on.nodes[idx]._segs && on.nodes[idx]._segs.length >= 2);
+  assert.equal(off.nodes[idx]._segs, undefined);
+  // a month later the patched probe is far outside Kerbin's SOI (but still near Kerbin's orbit); the unpatched one is on its Kerbin hyperbola
+  const t = 30 * Data.DAY;
+  const pOn = on.nodePositionAt(idx, t, [0, 0, 0]);
+  const kb = world.positions(t);
+  const k = kerbin.idx * 3;
+  const dOn = Math.hypot(pOn[0] - kb[k], pOn[1] - kb[k + 1], pOn[2] - kb[k + 2]);
+  assert.ok(dOn > kerbin.soiRadius, 'distance ' + dOn);
+  // positions are continuous across the hand-over
+  const seg = on.nodes[idx]._segs[0];
+  const before = on.nodePositionAt(idx, seg.to - 1, [0, 0, 0]), after = on.nodePositionAt(idx, seg.to + 1, [0, 0, 0]);
+  assert.ok(Math.hypot(before[0] - after[0], before[1] - after[1], before[2] - after[2]) < 20000, 'jump at the hand-over');
+  // the simulation still runs end to end
+  const res = Sim.scanSync(on, 0, 40 * Data.DAY, 3600);
+  assert.ok(res.sources[0].uptime >= 0 && res.sources[0].uptime <= 1);
+});

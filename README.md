@@ -80,8 +80,15 @@ provenance and the verified antenna table.
   rules and positions, and every stock body's spin phase were read from the game's own code and data files** (see
   `docs/RESEARCH.md` §2; `tools/ildump` and `tools/unityscan` are the readers). Nothing the model relies on is a guess
   any more for stock KSP; mods' own planets and stations are only as accurate as their configs.
-* Orbits are two-body Kepler orbits: no perturbations, plasma blackout, Near Future reflectors or signal-strength
-  multipliers. Antenna extension is not tracked: list only the antennas you deploy. Escape (hyperbolic) orbits are not imported.
+* Orbits are two-body Kepler orbits, like the game's own patched conics (stock KSP has no perturbations). A vessel can
+  be set to **follow patched conics**: escape trajectories (imported from a save) and transfer orbits are carried out of
+  one sphere of influence and into the next, with no further burns.
+* Near Future reflectors are modelled (pick the reflector an antenna points at), and each antenna entry has an
+  *extended* switch: retracted antennas do not count, as in the game.
+* Plasma blackout is not modelled: in the game it is a transient on loaded vessels re-entering an atmosphere, never
+  a factor for an orbit or a landed vessel. There are no other signal-strength multipliers in the stock game.
+* The Antenna finder and the Link & relay chain are range calculators; under the distance picker they now also say
+  how often the straight line between the two bodies is blocked over the next 8 years (centre to centre).
 
 ## Development
 
