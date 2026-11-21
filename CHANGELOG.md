@@ -2,7 +2,7 @@
 
 All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [1.1.0] - unreleased
+## [1.1.0] - 2026-11-21
 
 ### Corrected (all read from the game's own files)
 - **Kerbol blocks signals** (the Sun carries a CommNet body in the game's scene data, like all 17 stock bodies). The
