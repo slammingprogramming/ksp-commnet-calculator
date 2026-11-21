@@ -8,6 +8,7 @@
   const Core = window.KSPCore;
   const Orb = window.KSPOrbits;
   const Pl = window.KSPPlanner;
+  const Share = window.KSPShare;
   const h = App.h;
 
   /* ---------- data model ---------- */
@@ -144,6 +145,96 @@
     function changed() { App.commit(); }
     function rerender() { App.saveState(); render(); App.commit(); }
 
+    /* ---------- export / import / share link ---------- */
+
+    const note = h('p', { class: 'hint', role: 'status', 'aria-live': 'polite' });
+    const say = (t, bad) => { note.textContent = t; note.classList.toggle('bad', !!bad); };
+    const settingsOf = () => Object.fromEntries(Object.keys(Share.SETTING_KEYS).map((k) => [k, App.state.settings[k]]));
+
+    async function pack(obj) {
+      const bytes = Share.utf8(JSON.stringify(obj));
+      if (typeof CompressionStream === 'function') {
+        try {
+          const buf = await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
+          return 'z.' + Share.toBase64Url(new Uint8Array(buf));
+        } catch (e) { /* fall through to the plain form */ }
+      }
+      return 'j.' + Share.toBase64Url(bytes);
+    }
+
+    async function unpack(code) {
+      const kind = code.slice(0, 2), bytes = Share.fromBase64Url(code.slice(2));
+      if (!bytes || (kind !== 'z.' && kind !== 'j.')) throw new Error('The link is damaged.');
+      if (kind === 'j.') return Share.unutf8(bytes);
+      if (typeof DecompressionStream !== 'function') throw new Error('This browser cannot open compressed links.');
+      const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+      const parts = [];
+      let total = 0;
+      for (;;) {
+        const r = await reader.read();
+        if (r.done) break;
+        total += r.value.length;
+        if (total > Share.MAX_TEXT_BYTES) { reader.cancel(); throw new Error('The link expands to something too large.'); }
+        parts.push(r.value);
+      }
+      const all = new Uint8Array(total);
+      let o = 0;
+      parts.forEach((p) => { all.set(p, o); o += p.length; });
+      return Share.unutf8(all);
+    }
+
+    /** Validate untrusted text, ask the user, then replace the scenario. */
+    function adopt(textIn, origin) {
+      const res = Share.parseScenario(textIn, (id) => !!App.lookup(id));
+      if (res.error) { say(res.error, true); return; }
+      const n = res.scenario.nodes.length;
+      const msg = 'Replace your scenario with ' + n + ' vessel' + (n === 1 ? '' : 's') + ' from ' + origin + (res.settings ? ' and change your game settings to the ones it carries' : '') + '?';
+      if (!window.confirm(msg)) { say('Import cancelled.'); return; }
+      sc.nodes = res.scenario.nodes.map((x) => newNode(x));
+      sc.ut = res.scenario.ut;
+      if (res.settings) { Object.assign(App.state.settings, res.settings); App.buildSettings(); }
+      App.saveState();
+      App.rebuildAll();
+      say('Loaded ' + n + ' vessel' + (n === 1 ? '' : 's') + '.' + (res.warnings.length ? ' ' + res.warnings.slice(0, 3).join(' ') : ''));
+    }
+
+    function exportFile() {
+      const json = JSON.stringify(Share.exportScenario(sc, settingsOf(), Data.APP_VERSION), null, 1);
+      const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+      const a = h('a', { href: url, download: 'ksp-commnet-scenario.json' });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      say('Saved ksp-commnet-scenario.json (vessels, antennas, time and game settings).');
+    }
+
+    const fileIn = h('input', { type: 'file', accept: 'application/json,.json', hidden: true, 'aria-label': 'Scenario file to import' });
+    fileIn.addEventListener('change', () => {
+      const f = fileIn.files[0];
+      fileIn.value = '';
+      if (!f) return;
+      if (f.size > Share.MAX_TEXT_BYTES) { say('That file is too large to be a scenario.', true); return; }
+      f.text().then((t) => adopt(t, 'the file “' + f.name.slice(0, 40) + '”'), () => say('Could not read the file.', true));
+    });
+
+    async function shareLink() {
+      try {
+        const code = await pack(Share.exportScenario(sc, settingsOf(), Data.APP_VERSION));
+        const link = location.origin + location.pathname + '#s=' + code;
+        let copied = false;
+        try { await navigator.clipboard.writeText(link); copied = true; } catch (e) { /* no clipboard permission */ }
+        if (!copied) window.prompt('Copy this link:', link);
+        say((copied ? 'Link copied. ' : '') + 'It holds the whole scenario (' + link.length.toLocaleString('en-US') + ' characters) and nothing is uploaded.' + (link.length > 8000 ? ' Very long: some chat apps cut links, so send the file instead.' : ''));
+      } catch (e) { say('Could not build the link.', true); }
+    }
+
+    // A link like …#s=z.xxxx was opened: offer to load it (never silently).
+    setTimeout(() => {
+      const m = /^#s=([A-Za-z0-9._-]+)$/.exec(location.hash);
+      if (!m) return;
+      App.activate('scenario');
+      unpack(m[1]).then((t) => { history.replaceState(null, '', location.pathname + location.search); adopt(t, 'the shared link'); }, (e) => say(e.message, true));
+    }, 0);
+
     function numField(label, get, set, opts) {
       opts = opts || {};
       const input = h('input', { type: 'text', value: opts.fmt ? opts.fmt(get()) : String(get()), 'aria-label': label, size: 9, spellcheck: 'false' });
@@ -268,8 +359,11 @@
           h('div', { class: 'field' }, h('label', { text: 'Simulation time' }), utIn),
           h('button', { class: 'btn primary', type: 'button', onclick: () => { sc.nodes.push(newNode({ name: 'Vessel ' + (sc.nodes.length + 1) })); rerender(); } }, '＋ Add a vessel'),
           exSel,
+          h('button', { class: 'btn small', type: 'button', title: 'Download the scenario as a file', onclick: exportFile }, 'Export file'),
+          h('button', { class: 'btn small', type: 'button', title: 'Load a scenario file', onclick: () => fileIn.click() }, 'Import file'),
+          sc.nodes.length ? h('button', { class: 'btn small', type: 'button', title: 'Copy a link that contains the whole scenario', onclick: shareLink }, 'Copy share link') : null,
           sc.nodes.length ? h('button', { class: 'btn ghost danger', type: 'button', onclick: () => { if (window.confirm('Remove all scenario nodes?')) { sc.nodes = []; rerender(); } } }, 'Clear') : null),
-        saveRow,
+        saveRow, note, fileIn,
       ].filter(Boolean));
 
       listBox.replaceChildren(...(sc.nodes.length

@@ -76,3 +76,55 @@ test('with only KSC, a far-side Mun lander needs both a Mun ring and a Kerbin-si
   assert.ok(bodies.indexOf('Kerbin') >= 0, 'Kerbin fix after the Mun ring: ' + bodies.join(','));
   assert.ok(plan.final.sources[0].uptime > 0.98, 'final uptime ' + plan.final.sources[0].uptime);
 });
+
+test('reachGen: far-side Mun sites are blocked, near-side ones are not; gas giants are skipped', () => {
+  const Core = require('../js/core.js');
+  const st = Core.vesselStats([{ id: 'stock:HighGainAntenna', count: 1 }], lookup, 1);
+  const P = { world, lookup, settings: { dsnPower: 250e9, extraStations: false, occVac: 0.9, occAtm: 0.75 }, power: st.own, t0: 0, horizon: 30 * Data.DAY, minSignal: 0.05 };
+  const res = Pl.runSync(Pl.reachGen(P, ['Mun', 'Jool']));
+  assert.equal(res.length, 1);
+  assert.equal(res[0].body, 'Mun');
+  assert.ok(res[0].best > 0.5 && res[0].best > res[0].worst + 0.4, 'best site ' + res[0].best);
+  assert.ok(res[0].worst < 0.2, 'worst site ' + res[0].worst);
+  assert.ok(res[0].mean > 0.15 && res[0].mean < 0.6, 'mean ' + res[0].mean);
+});
+
+test('deployHint: three keostationary relays are 1/3 of a day apart and phase with a ~170 m/s lowering', () => {
+  const alt = Pl.keoAltitude(world);
+  const ring = Pl.ringNodes(world, 'Kerbin', 3, alt, 0, 0, 0, [{ id: 'stock:RelayAntenna100', count: 1 }], 'ring:Kerbin', 'r');
+  const hint = Pl.deployHint(world, ring);
+  assert.equal(hint.n, 3);
+  assert.ok(Math.abs(hint.period - 21549) < 20, 'period ' + hint.period);
+  assert.ok(Math.abs(hint.spacing - hint.period / 3) < 1e-6);
+  assert.equal(hint.phasing.laps, 1);
+  assert.ok(hint.phasing.dv > 140 && hint.phasing.dv < 200, 'dv ' + hint.phasing.dv);
+  assert.ok(hint.phasing.otherAltitude > 1.0e6 && hint.phasing.otherAltitude < 1.5e6, 'periapsis ' + hint.phasing.otherAltitude);
+  const lines = Pl.deployText(hint, (x) => Math.round(x / 1000) + ' km', (x) => Math.round(x) + ' s');
+  assert.ok(lines.length === 2 && /release relay 1/.test(lines[1]));
+  assert.equal(Pl.deployHint(world, []), null);
+});
+
+test('deployHint: a low ring with many relays needs several laps to keep periapsis above the atmosphere', () => {
+  const ring = Pl.ringNodes(world, 'Kerbin', 4, 100000, 90, 0, 0, [{ id: 'stock:RelayAntenna100', count: 1 }], 'ring:Kerbin', 'r');
+  const hint = Pl.deployHint(world, ring);
+  assert.ok(hint.phasing.laps > 1, 'laps ' + hint.phasing.laps);
+  assert.ok(hint.phasing.otherAltitude >= hint.minAltitude);
+});
+
+test('deployHint: solar relays get a heliocentric phasing estimate', () => {
+  const k = world.index.get('Kerbin');
+  const nodes = [60, -60].map((off, i) => ({ id: 's' + i, loc: { type: 'orbit', body: 'Kerbol', orbit: { a: k.orbit.a, e: 0, i: 0, lan: 0, w: 0, m0: k.orbit.m0 + off * Math.PI / 180, epoch: 0 } } }));
+  const hint = Pl.deployHint(world, nodes);
+  assert.ok(hint.solar);
+  assert.ok(hint.phasing.dv > 500 && hint.phasing.dv < 3000, 'dv ' + hint.phasing.dv);
+});
+
+test('evaluateGen reports per-vessel uptime and causes for a what-if node set', () => {
+  const probe = { id: 'lander', name: 'Far-side lander', tracked: true, loc: { type: 'landed', body: 'Mun', lat: 10, lon: 47.436 + 180, alt: 0 }, antennas: [{ id: 'stock:HighGainAntenna', count: 1 }] };
+  const base = Pl.runSync(Pl.evaluateGen({ world, lookup, settings, nodes: [probe], t0: 0, horizon: 4 * Data.DAY, minSignal: 0.1 }));
+  assert.equal(base.worst, 0);
+  assert.equal(base.causes.causes[0].id, 'occ:Mun');
+  const ring = Pl.ringNodes(world, 'Mun', 3, 300000, 0, 0, 0, [{ id: 'stock:RelayAntenna100', count: 2 }], 'ring:Mun', 'm').map((n) => Object.assign(n, { tracked: false }));
+  const fixed = Pl.runSync(Pl.evaluateGen({ world, lookup, settings, nodes: [probe].concat(ring), t0: 0, horizon: 4 * Data.DAY, minSignal: 0.1 }));
+  assert.ok(fixed.worst > 0.9, 'with relays ' + fixed.worst);
+});

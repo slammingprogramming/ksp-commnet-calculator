@@ -22,3 +22,15 @@ jobs:
         with:
           node-version: 20
       - run: npm test
+
+  smoke:
+    # Loads the real page in the Chrome that ships on the runner and drives the main flows (test/smoke/smoke.js).
+    # playwright-core is installed only here; it is not a dependency of the app.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - run: npm install --no-save --no-package-lock playwright-core@1.49.1
+      - run: node test/smoke/smoke.js

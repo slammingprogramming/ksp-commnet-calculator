@@ -55,7 +55,7 @@ test('reads an OPM-style Body: radius, gee -> GM, orbit, atmosphere, Sun -> Kerb
   assert.equal(b.parent, 'Kerbol');
   assert.equal(b.pack, 'custom');
   assert.equal(b.radius, 2145000);
-  near(b.gm, 0.314 * 9.81 * 2145000 * 2145000);
+  near(b.gm, 0.314 * 9.80665 * 2145000 * 2145000);
   assert.equal(b.atmo, 260000);
   assert.equal(b.rot, 40250);
   assert.equal(b.orbit.a, 409355191706);

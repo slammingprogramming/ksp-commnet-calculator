@@ -55,8 +55,9 @@
     return keep.reverse();
   }
 
-  function* runScan(sim, t0, t1, dt) {
-    const sc = Sim.createScanner(sim, t0, t1, dt);
+  function* runScan(sim, t0, t1, dt, coarse) {
+    // coarse: candidate comparison, edges only need to be known to a fraction of the step
+    const sc = Sim.createScanner(sim, t0, t1, dt, coarse ? dt / 8 : 0);
     while (!sc.run(25)) yield sc.progress;
     return sc.result;
   }
@@ -139,13 +140,16 @@
     const ample = tiers.length ? tiers[tiers.length - 1].setup : [{ id: 'stock:RelayAntenna100', count: 3 }];
     const mk = (ns, s) => Sim.createSim({ world, lookup, settings: s || settings, nodes: ns });
     const fullDt = (sim) => Math.max(sim.suggestStep(24), P.horizon / 90000);
+    // Comparing candidates only needs the ranking, so scan them at half resolution; accepted designs are re-scanned
+    // at full resolution (blackout edges are refined to 0.5 s either way, only blackouts shorter than the step can slip by).
+    const roughDt = (sim) => Math.max(fullDt(sim) * 2, P.horizon / 45000);
 
     let working = clone(P.nodes);
     const steps = [], advice = [], addressed = new Set(), retry = new Set();
 
-    function* diagnose(nodes) {
+    function* diagnose(nodes, rough) {
       const sim = mk(nodes);
-      const res = yield* runScan(sim, t0, t1, fullDt(sim));
+      const res = yield* runScan(sim, t0, t1, rough ? roughDt(sim) : fullDt(sim), rough);
       return { sim: sim, res: res, causes: causeTable(res) };
     }
 
@@ -170,7 +174,7 @@
       let worst = 1, mean = 0;
       for (let w = 0; w < windows; w++) {
         const a = t0 + (P.horizon * (w + 0.5)) / windows;
-        const res = yield* runScan(sim, a, a + span, dt);
+        const res = yield* runScan(sim, a, a + span, dt, true);
         worst = Math.min(worst, worstUptime(res));
         mean += meanUptime(res) / windows;
       }
@@ -244,7 +248,7 @@
         const cands = yield* solarCandidates();
         let best = null, n = 0;
         for (const c of cands) {
-          const d = yield* diagnose(working.concat(c.nodes));
+          const d = yield* diagnose(working.concat(c.nodes), true);
           const score = { cand: c, res: d.res, worst: worstUptime(d.res), mean: meanUptime(d.res) };
           if (!best || score.worst > best.worst + 0.0005 || (Math.abs(score.worst - best.worst) <= 0.0005 && c.n < best.cand.n)) best = score;
           yield ++n / cands.length;
@@ -257,7 +261,7 @@
         // confirm the top candidates over the full horizon
         let best = null;
         for (const c of top) {
-          const d = yield* diagnose(working.concat(c.nodes));
+          const d = yield* diagnose(working.concat(c.nodes), true);
           const score = { c: c, res: d.res, worst: worstUptime(d.res), mean: meanUptime(d.res) };
           if (!best || score.worst > best.worst + 0.0005 || (Math.abs(score.worst - best.worst) <= 0.0005 && c.cfg.n < best.c.cfg.n)) best = score;
         }
@@ -288,15 +292,18 @@
     phase('Dropping fixes that became redundant');
     {
       const order = Array.from(new Set(working.filter((n) => n.planned).map((n) => n.group))).reverse();
+      let ref = order.length ? yield* diagnose(working, true) : cur; // same resolution as the candidates below
       for (const g of order) {
         const without = working.filter((n) => n.group !== g);
-        const d = yield* diagnose(without);
-        if (worstUptime(d.res) >= worstUptime(cur.res) - 0.0003 && meanUptime(d.res) >= meanUptime(cur.res) - 0.0003) {
+        const d = yield* diagnose(without, true);
+        if (worstUptime(d.res) >= worstUptime(ref.res) - 0.0003 && meanUptime(d.res) >= meanUptime(ref.res) - 0.0003) {
           pruned.push({ group: g, count: working.length - without.length, uptimeWithout: worstUptime(d.res) });
           working = without;
-          cur = d;
+          ref = d;
+          cur = null;
         }
       }
+      if (!cur) cur = yield* diagnose(working);
     }
 
     // ---- size the antennas (geometry is settled; use the lightest power that loses nothing) ----
@@ -304,8 +311,9 @@
     phase('Choosing the lightest antennas');
     if (tiers.length) {
       const groups = Array.from(new Set(working.filter((n) => n.planned).map((n) => n.group)));
-      const ampleScore = worstUptime(cur.res) - 0.0004;
-      const ampleMean = meanUptime(cur.res) - 0.0004;
+      const ampleRef = groups.length ? yield* diagnose(working, true) : cur;
+      const ampleScore = worstUptime(ampleRef.res) - 0.0004;
+      const ampleMean = meanUptime(ampleRef.res) - 0.0004;
       for (const g of groups) {
         const members = working.filter((n) => n.group === g);
         let lo = 0, hi = tiers.length - 1, chosen = hi;
@@ -313,7 +321,7 @@
           const mid = (lo + hi) >> 1;
           members.forEach((m) => { m.antennas = clone(tiers[mid].setup); });
           const sim = mk(working);
-          const res = yield* runScan(sim, t0, t1, Math.max(fullDt(sim) * 2, P.horizon / 45000));
+          const res = yield* runScan(sim, t0, t1, roughDt(sim), true);
           const ok = worstUptime(res) >= ampleScore && meanUptime(res) >= ampleMean;
           if (ok) { chosen = mid; hi = mid - 1; } else lo = mid + 1;
         }
@@ -338,9 +346,9 @@
     for (const preset of Data.DIFFICULTY_PRESETS) {
       const s2 = Object.assign({}, settings, { occVac: preset.occVac, occAtm: preset.occAtm, rangeMod: preset.range });
       const sim = mk(working, s2);
-      const res = yield* runScan(sim, t0, t1, Math.max(fullDt(sim) * 2, P.horizon / 45000));
+      const res = yield* runScan(sim, t0, t1, roughDt(sim), true);
       const base = mk(P.nodes, s2);
-      const bres = yield* runScan(base, t0, t1, Math.max(fullDt(base) * 2, P.horizon / 45000));
+      const bres = yield* runScan(base, t0, t1, roughDt(base), true);
       stress.push({ preset: preset, uptime: worstUptime(res), baselineUptime: worstUptime(bres), longest: res.sources.reduce((m, x) => Math.max(m, x.longestBlackout), 0) });
     }
 
@@ -357,6 +365,124 @@
       const r = gen.next();
       if (r.done) return r.value;
     }
+  }
+
+  /* ---------- deployment hints ---------- */
+
+  /**
+   * How to put the relays of one planned group on station. Relays on one circular orbit, equally spaced, are
+   * deployed from a single carrier by phasing: release one, lower the carrier's periapsis so its period is shorter by
+   * 1/(n*k) for k laps, and it comes back 360/n degrees behind the released relay. Two-body numbers only.
+   * `nodes`: the planned simulator nodes of one group. Returns null if there is nothing to say.
+   */
+  function deployHint(world, nodes) {
+    if (!nodes.length || nodes[0].loc.type !== 'orbit') return null;
+    const first = nodes[0];
+    const body = world.index.get(first.loc.body);
+    const o = first.loc.orbit;
+    const n = nodes.length;
+    const gm = body.gm, r = o.a;
+    const T = Orb.TAU * Math.sqrt((r * r * r) / gm);
+    const vc = Math.sqrt(gm / r);
+    const solar = !!body.star;
+    const out = { body: body.id, n: n, solar: solar, radius: r, altitude: solar ? null : r - body.radius, period: T, spacing: n > 1 ? T / n : 0, steps: [] };
+    if (!solar) out.minAltitude = world.altitudeLimits(body.id).min;
+    // one phasing manoeuvre for a gap of `frac` of a revolution gained over k laps (frac > 0: carrier ends up behind the released relay)
+    const phasing = (frac, k) => {
+      const Tp = T * (1 - frac / k);
+      const ap = r * Math.pow(Tp / T, 2 / 3);
+      const rOther = 2 * ap - r; // the other apsis of the phasing orbit
+      const vAp = Math.sqrt(gm * (2 / r - 1 / ap));
+      return { laps: k, period: Tp, other: rOther, dv: Math.abs(vc - vAp) };
+    };
+    if (n > 1 || solar) {
+      for (let k = 1; k <= 12; k++) {
+        const frac = solar ? 1 / 6 : 1 / n; // solar relays sit 60 degrees from Kerbin
+        const p = phasing(frac, k);
+        const ok = solar ? p.other > 0 : p.other - body.radius >= out.minAltitude;
+        if (ok || k === 12) { out.phasing = Object.assign({ feasible: ok, otherAltitude: solar ? null : p.other - body.radius, count: solar ? n : n - 1 }, p); break; }
+      }
+    }
+    return out;
+  }
+
+  /** Plain-English lines for a deploy hint (shared by the UI and the copy-as-text plan). */
+  function deployText(h, fmtDist, fmtDur) {
+    if (!h) return [];
+    const lines = [];
+    if (h.solar) {
+      lines.push('Each solar relay shares Kerbin\u2019s heliocentric orbit but sits 60\u00b0 ahead or behind. Leave Kerbin on a heliocentric orbit with a slightly different period (' + fmtDur(h.phasing ? h.phasing.period : h.period) + ' instead of ' + fmtDur(h.period) + ', shorter for a relay ahead, longer for one behind) so it drifts 60° from Kerbin in ' + (h.phasing ? h.phasing.laps : 1) +
+        ' lap' + (h.phasing && h.phasing.laps > 1 ? 's' : '') + ', then circularise at Kerbin’s distance: about ' +
+        (h.phasing ? Math.round(h.phasing.dv) : 0) + ' m/s of heliocentric velocity change each way, on top of escaping Kerbin.');
+      return lines;
+    }
+    lines.push('Orbit period ' + fmtDur(h.period) + (h.n > 1 ? '; relays ' + fmtDur(h.spacing) + ' apart' : '') + '.');
+    if (h.n > 1 && h.phasing) {
+      const p = h.phasing;
+      lines.push('Deploy from one carrier: circularise at ' + fmtDist(h.altitude) + ', release relay 1, then lower the carrier\u2019s periapsis to about ' + fmtDist(p.otherAltitude) + ' (period ' + fmtDur(p.period) +
+        ') for ' + p.laps + ' lap' + (p.laps > 1 ? 's' : '') + ' and re-circularise at ' + fmtDist(h.altitude) + ' to release the next. About ' + Math.round(p.dv) + ' m/s each way per extra relay (' + Math.round(2 * p.dv * p.count) + ' m/s in total).' +
+        (p.feasible ? '' : ' Even 12 laps leave the periapsis too low: use separate launches or smaller steps.'));
+    } else if (h.n === 1) {
+      lines.push('A single relay: just circularise at ' + fmtDist(h.altitude) + '.');
+    }
+    return lines;
+  }
+
+  /* ---------- what-if evaluation (Relay planner tab) ---------- */
+
+  /**
+   * Simulate `nodes` over the look-ahead and report per tracked source uptime plus the outage causes.
+   * P: { world, lookup, settings, nodes, t0, horizon, minSignal }. Generator; returns { sources, causes, worst, mean }.
+   */
+  function* evaluateGen(P) {
+    const settings = Object.assign({}, P.settings, { minSignal: P.minSignal || 0 });
+    const sim = Sim.createSim({ world: P.world, lookup: P.lookup, settings: settings, nodes: P.nodes });
+    const dt = Math.max(sim.suggestStep(24), P.horizon / 90000);
+    const res = yield* runScan(sim, P.t0, P.t0 + P.horizon, dt);
+    return { sources: res.sources, causes: causeTable(res), worst: worstUptime(res), mean: meanUptime(res), problems: sim.problems };
+  }
+
+  /* ---------- line-of-sight survey for the Reach tab ---------- */
+
+  /** Bodies with no surface to land on (stock + Outer Planets). Unknown bodies from planet packs count as solid. */
+  const GAS_GIANTS = new Set(['Jool', 'Sarnus', 'Urlum', 'Neidon']);
+
+  /**
+   * For each body: how much of the time can a lander (8 spread-out sites) with `power` reach the DSN directly, counting
+   * every body that gets in the way? Yields progress 0..1; returns [{ body, mean, worst, best }] (no entry for gas giants).
+   * P: { world, lookup, settings (sim settings incl. dsnPower), power: {own, relay}, t0, horizon, minSignal }
+   */
+  function* reachGen(P, bodyIds) {
+    const world = P.world;
+    const sites = surfaceSamples(8);
+    const out = [];
+    let done = 0;
+    for (const id of bodyIds) {
+      const b = world.index.get(id);
+      if (b && !b.star && !GAS_GIANTS.has(id)) {
+        const nodes = sites.map((p, i) => ({
+          id: 'site:' + i, name: 'site ' + i, tracked: true, loc: { type: 'landed', body: id, lat: p.lat, lon: p.lon, alt: 0 },
+          antennas: [], powerOverride: { own: P.power, relay: P.power },
+        }));
+        const sim = Sim.createSim({ world: world, lookup: P.lookup, settings: Object.assign({}, P.settings, { minSignal: P.minSignal || 0 }), nodes: nodes });
+        const dt = Math.max(60, sim.suggestStep(12));
+        const span = Math.min(20 * Data.DAY, Math.max(2 * Data.DAY, b.rotPeriod * 1.05));
+        let mean = 0, worst = 1, best = 0;
+        const windows = 3;
+        for (let w = 0; w < windows; w++) {
+          const a = P.t0 + (P.horizon * (w + 0.5)) / windows;
+          const res = yield* runScan(sim, a, a + span, dt, true);
+          res.sources.forEach((s) => { mean += s.uptime / (windows * res.sources.length); });
+          const wu = res.sources.map((s) => s.uptime);
+          // per site, over all windows: accumulate below
+          wu.forEach((u, i) => { nodes[i].acc = (nodes[i].acc || 0) + u / windows; });
+        }
+        nodes.forEach((n) => { worst = Math.min(worst, n.acc); best = Math.max(best, n.acc); });
+        out.push({ body: id, mean: mean, worst: worst, best: best });
+      }
+      yield ++done / bodyIds.length;
+    }
+    return out;
   }
 
   /* ---------- surface coverage map of a body ---------- */
@@ -377,7 +503,7 @@
     const up = new Float64Array(cells.length);
     for (let w = 0; w < windows; w++) {
       const a = P.t0 + (P.horizon * (w + 0.5)) / windows;
-      const res = yield* runScan(sim, a, a + span, dt);
+      const res = yield* runScan(sim, a, a + span, dt, true);
       res.sources.forEach((s, i) => { up[i] += s.uptime / windows; });
     }
     return { cells: cells, uptime: up, latStep: latStep, lonStep: lonStep };
@@ -385,6 +511,6 @@
 
   return {
     surfaceSamples: surfaceSamples, relayTiers: relayTiers, causeTable: causeTable, keoAltitude: keoAltitude,
-    planGen: planGen, runSync: runSync, coverageGen: coverageGen, runScan: runScan, ringNodes: ringNodes,
+    planGen: planGen, runSync: runSync, coverageGen: coverageGen, reachGen: reachGen, GAS_GIANTS: GAS_GIANTS, deployHint: deployHint, deployText: deployText, evaluateGen: evaluateGen, runScan: runScan, ringNodes: ringNodes,
   };
 });

@@ -66,6 +66,33 @@ class P
         return "tok:" + token.ToString("X8");
     }
 
+    // Decodes the common field-signature shapes (primitives, string, class/valuetype by name, arrays) for the "fields" listing.
+    static string FieldType(BlobReader sr)
+    {
+        sr.ReadByte(); // 0x06 FIELD
+        return ElemType(ref sr);
+    }
+    static string ElemType(ref BlobReader sr)
+    {
+        byte t = sr.ReadByte();
+        switch (t)
+        {
+            case 0x02: return "bool"; case 0x03: return "char"; case 0x04: return "sbyte"; case 0x05: return "byte";
+            case 0x06: return "short"; case 0x07: return "ushort"; case 0x08: return "int"; case 0x09: return "uint";
+            case 0x0a: return "long"; case 0x0b: return "ulong"; case 0x0c: return "float"; case 0x0d: return "double";
+            case 0x0e: return "string"; case 0x1c: return "object";
+            case 0x11: case 0x12:
+            {
+                int v = sr.ReadCompressedInteger(); int tag = v & 3, idx = v >> 2;
+                string name = tag == 0 ? TypeName(MetadataTokens.TypeDefinitionHandle(idx))
+                    : tag == 1 ? md.GetString(md.GetTypeReference(MetadataTokens.TypeReferenceHandle(idx)).Name) : "typespec";
+                return (t == 0x11 ? "struct " : "class ") + name;
+            }
+            case 0x1d: return ElemType(ref sr) + "[]";
+            case 0x15: { string g = ElemType(ref sr); int n = sr.ReadCompressedInteger(); var a = new List<string>(); for (int i = 0; i < n; i++) a.Add(ElemType(ref sr)); return g + "<" + string.Join(",", a) + ">"; }
+            default: return "?0x" + t.ToString("x2");
+        }
+    }
     static void Dump(MethodDefinition m, string label)
     {
         if (m.RelativeVirtualAddress == 0) return;
@@ -132,7 +159,7 @@ class P
                 continue;
             }
             Console.WriteLine("### " + full);
-            foreach (var fh in td.GetFields()) { var f = md.GetFieldDefinition(fh); Console.WriteLine("  field " + md.GetString(f.Name)); }
+            foreach (var fh in td.GetFields()) { var f = md.GetFieldDefinition(fh); var sr = md.GetBlobReader(f.Signature); Console.WriteLine("  field " + md.GetString(f.Name) + "  [" + f.Attributes + "]  type=" + FieldType(sr)); }
             foreach (var mh in td.GetMethods())
             {
                 var m = md.GetMethodDefinition(mh);

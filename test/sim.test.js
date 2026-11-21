@@ -101,17 +101,22 @@ test('Kerbol blocks Kerbin-Duna at solar conjunction', () => {
 
 test('ground stations follow the game rules (CommNetHome.CreateNode)', () => {
   const names = (s) => Sim.createSim({ world, lookup, settings: settings(s), nodes: [] }).nodes.map((n) => n.name);
-  // extras off, other launch sites allowed: KSC + the launch-site relay Baikerbanur only
-  assert.deepEqual(names({ extraStations: false, allowOtherLaunchSites: true }), ['Kerbal Space Center', 'Baikerbanur']);
-  // extras off and no other launch sites: KSC alone
+  // extras off: KSC alone. Baikerbanur and the five anomaly dishes are not permanent, so they do not exist.
+  assert.deepEqual(names({ extraStations: false, allowOtherLaunchSites: true }), ['Kerbal Space Center']);
   assert.deepEqual(names({ extraStations: false, allowOtherLaunchSites: false }), ['Kerbal Space Center']);
-  // extras on: all (Larkes only with the DLC flag)
+  // Making History: Desert and Larkes are permanent, so they exist with extras off if other launch sites are allowed
+  assert.deepEqual(names({ extraStations: false, allowOtherLaunchSites: true, makingHistory: true }),
+    ['Kerbal Space Center', 'Desert Launch Site (Making History)', 'Larkes (Making History)']);
+  assert.deepEqual(names({ extraStations: false, allowOtherLaunchSites: false, makingHistory: true }), ['Kerbal Space Center']);
+  // extras on: KSC + five anomaly dishes + Baikerbanur (+ the two DLC stations with the DLC flag)
   assert.equal(names({ extraStations: true }).length, 7);
-  assert.equal(names({ extraStations: true, larkes: true }).length, 8);
+  assert.equal(names({ extraStations: true, makingHistory: true }).length, 9);
   const sim = Sim.createSim({ world, lookup, settings: settings({ extraStations: true }), nodes: [] });
   const power = (n) => sim.nodes.find((x) => x.name === n).power;
   assert.equal(power('Crater Rim'), 250e9);
-  assert.equal(power('Baikerbanur'), 36e3, 'permanent stations keep a small antenna');
+  assert.equal(power('Baikerbanur'), 250e9, 'Baikerbanur is a normal DSN-rated station when extras are on');
+  const mh = Sim.createSim({ world, lookup, settings: settings({ extraStations: true, makingHistory: true }), nodes: [] });
+  assert.equal(mh.nodes.find((x) => x.name.startsWith('Larkes')).power, 40e3, 'permanent stations keep their fixed 40k antenna');
 });
 
 test('the occlusion test matches the geometric segment/sphere test for outside endpoints', () => {
@@ -131,4 +136,26 @@ test('a node inside the blocking sphere can still see outward (game behaviour)',
   const lander = { id: 'l', name: 'l', tracked: true, loc: { type: 'landed', body: 'Mun', lat: 0, lon: 47.436, alt: 0 }, antennas: [{ id: K.hg55, count: 1 }] };
   const r = Sim.scanSync(build([lander], { extraStations: true, occVac: 1.25 }), 0, 2 * Data.DAY, 900).sources[0];
   assert.ok(r.uptime > 0.9, 'uptime ' + r.uptime);
+});
+
+test('evalOne agrees with evalAt, and a coarse edge tolerance changes the uptime only slightly', () => {
+  const sim = build([
+    landed('far', 'Mun', 10, 47.436 + 180, [{ id: K.hg55, count: 1 }]),
+    landed('duna', 'Duna', 5, 20, [{ id: K.c16, count: 1 }]),
+    orbit('relay', 'Kerbin', 2863330, 0, 0, 30, [{ id: K.ra100, count: 2 }], { tracked: false }),
+  ], { extraStations: true });
+  for (const t of [0, 123456, 2.5e6]) {
+    const all = sim.evalAt(t);
+    all.forEach((r, s) => {
+      const one = sim.evalOne(t, s);
+      assert.equal(one.connected, r.connected);
+      assert.equal(one.signal, r.signal);
+      assert.deepEqual(one.cause, r.cause);
+    });
+  }
+  const t1 = 20 * Data.DAY, dt = 600;
+  const fine = Sim.scanSync(sim, 0, t1, dt);
+  const sc = Sim.createScanner(sim, 0, t1, dt, dt / 8);
+  while (!sc.run(1000)) { /* run to the end */ }
+  fine.sources.forEach((s, i) => assert.ok(Math.abs(s.uptime - sc.result.sources[i].uptime) < 0.002, s.name));
 });

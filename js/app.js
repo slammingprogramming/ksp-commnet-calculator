@@ -7,6 +7,7 @@
   const Core = window.KSPCore;
   const Parsers = window.KSPParsers;
   const Orb = window.KSPOrbits;
+  const Pl = window.KSPPlanner;
   const World = window.KSPWorld;
   const STORE = 'kspcomm.v1';
   const SOURCE_URL = 'https://github.com/slammingprogramming/ksp-commnet-calculator'; // the public repository (AGPL section 13: offer the source to network users)
@@ -42,6 +43,13 @@
     const p = Math.max(0, Math.min(1, s || 0));
     return 'hsl(' + Math.round(p * 125) + ' 72% ' + (p > 0 ? 55 : 62) + '%)';
   }
+  /** Same hue as sigColor, but dark enough to read as text on the light theme (WCAG AA); the bright one is for bars and cells. */
+  function sigInk(s) {
+    const light = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: light)').matches;
+    if (!light) return sigColor(s);
+    const p = Math.max(0, Math.min(1, s || 0));
+    return 'hsl(' + Math.round(p * 125) + ' 75% 28%)';
+  }
   function verdict(s) {
     if (s >= 0.9) return 'Excellent link';
     if (s >= 0.6) return 'Good link';
@@ -61,7 +69,7 @@
       v: 1,
       settings: {
         dsnLevel: 2, dsnCustom: '50G', rangeMod: 1, dsnMod: 1, packs: {}, bodyPacks: { opm: false },
-        occVac: 0.9, occAtm: 0.75, extraStations: false, larkes: false, allowOtherLaunchSites: true, sunOccludes: true, atmoBlocks: false,
+        occVac: 0.9, occAtm: 0.75, extraStations: false, makingHistory: false, allowOtherLaunchSites: true, sunOccludes: true, atmoBlocks: false,
       },
       chain: {
         vessels: [{ name: 'Probe', antennas: [{ id: 'stock:RelayAntenna100', count: 1 }] }],
@@ -79,8 +87,8 @@
       },
       custom: { packs: [], antennas: [], bodyPacks: [] },
       scenario: { nodes: [], ut: 0, nextId: 1 },
-      tracker: { focus: 'Kerbol', speed: 3600, horizon: 426 * 21600 },
-      planner: { horizon: 2, target: 99.5, minSignal: 20, designHard: false, robust: true },
+      tracker: { focus: 'Kerbol', speed: 3600, horizon: 426 * 21600, view: 'top' },
+      planner: { horizon: 2, target: 99.5, minSignal: 20, designHard: false, robust: true, skip: {}, whatif: { body: 'Kerbin', n: 3, alt: '2863 km', inc: 0, antennas: [{ id: 'stock:RelayAntenna100', count: 1 }] } },
       saveInfo: null,
       ui: { tab: 'chain' },
     };
@@ -99,6 +107,9 @@
       const raw = window.localStorage.getItem(STORE);
       if (!raw) return def;
       const s = mergeDeep(def, JSON.parse(raw));
+      // 'larkes' (v1.0.0) became 'makingHistory' once the game data showed the DLC has two stations (Desert and Larkes).
+      if (s.settings.larkes) s.settings.makingHistory = true;
+      delete s.settings.larkes;
       if (!Array.isArray(s.chain.vessels) || !s.chain.vessels.length) return def;
       while (s.chain.hops.length < s.chain.vessels.length) s.chain.hops.push({ text: '', from: 'Kerbin', to: 'Duna' });
       s.chain.hops.length = s.chain.vessels.length;
@@ -315,6 +326,15 @@
     };
   }
 
+  /** Settings for the time-domain simulator, from the current game settings. */
+  function simSettings() {
+    return {
+      rangeMod: state.settings.rangeMod, dsnPower: dsnPower(), occVac: state.settings.occVac, occAtm: state.settings.occAtm,
+      atmosphereBlocks: !!state.settings.atmoBlocks, sunOccludes: state.settings.sunOccludes !== false,
+      extraStations: !!state.settings.extraStations, makingHistory: !!state.settings.makingHistory, allowOtherLaunchSites: state.settings.allowOtherLaunchSites !== false,
+    };
+  }
+
   const meter = (s) => h('div', { class: 'meter' }, h('i', { style: 'width:' + Math.round(s * 100) + '%;background:' + sigColor(s) }));
 
   /* ================= settings panel ================= */
@@ -388,12 +408,12 @@
     const sysBlock = h('div', {},
       h('h3', { text: 'Systems & antennas' }),
       h('label', { class: 'inline', style: 'color:var(--text)' }, opm, 'Outer Planets Mod bodies'),
-      flag('extraStations', 'Extra ground stations (difficulty option)', 'Five more Kerbin stations at the DSN rating. Off: they do not exist.'),
-      flag('allowOtherLaunchSites', 'Other launch sites allowed (difficulty option)', 'With extra stations off, this keeps the launch-site relay Baikerbanur (a weak ~36k antenna).'),
-      flag('larkes', 'Making History station “Larkes”', 'Adds the DLC ground station (position approximate).'),
-      h('details', { style: 'margin-top:6px' }, h('summary', { class: 'hint', text: 'Simulation assumptions' }),
-        flag('sunOccludes', 'Kerbol blocks signals', 'Assumed on: the Sun is a body like any other for line of sight.'),
-        flag('atmoBlocks', 'Atmosphere height counts toward blocking size', 'Assumed off: the modifier scales the body radius only. Unverified against the game code.')),
+      flag('extraStations', 'Extra ground stations (difficulty option)', 'Six more Kerbin stations (five anomaly dishes and Baikerbanur) at the DSN rating. Off: they do not exist.'),
+      flag('allowOtherLaunchSites', 'Other launch sites allowed (difficulty option)', 'Only matters for Making History: its two launch-site stations (Desert, Larkes) are weak fixed 40k antennas that exist when this is on, even with extra stations off.'),
+      flag('makingHistory', 'Making History launch-site stations (Desert, Larkes)', 'Adds the DLC\u2019s two permanent ground stations. Positions and power are read from the DLC\u2019s own data.'),
+      h('details', { style: 'margin-top:6px' }, h('summary', { class: 'hint', text: 'Simulation switches (what-if)' }),
+        flag('sunOccludes', 'Kerbol blocks signals', 'On, as in the game: the Sun carries a CommNetBody like every planet and moon. Switch off only to see what conjunctions would do otherwise.'),
+        flag('atmoBlocks', 'Atmosphere height counts toward blocking size', 'Off, as in the game: the occlusion modifier scales the body radius only (read from CommNetBody.CreateOccluder). Switch on only to experiment.')),
       h('p', { class: 'hint', style: 'margin-top:6px' }, 'Antenna packs: ' + enabled.join(', ') + '. ',
         h('a', { href: '#', onclick: (e) => { e.preventDefault(); activate('antennas'); } }, 'Change')));
 
@@ -551,7 +571,7 @@
         const cb = h('input', { type: 'checkbox', checked: c.direct.on });
         cb.addEventListener('change', () => { c.direct.on = cb.checked; box.hidden = !cb.checked; commit(); });
         directBox.append(h('label', { class: 'inline', style: 'color:var(--text)' }, cb, 'Also check a direct link from “' + nodeName(vessels.length) + '” to the DSN'),
-          h('div', {}, h('small', { class: 'hint', text: 'The game always prefers a direct link when one exists.' })), box);
+          h('div', {}, h('small', { class: 'hint', text: 'The game always prefers a direct link when one exists. Range only: bodies in the way are not checked here (use the Tracker for that).' })), box);
       }
       editor.append(...[
         h('div', { class: 'chain-actions' },
@@ -596,7 +616,7 @@
       const note = (t) => { if (notes.indexOf(t) < 0) notes.push(t); };
       const out = [];
       out.push(h('div', { class: 'big' },
-        h('div', { class: 'pct', style: 'color:' + (allValid ? sigColor(total) : 'var(--muted)'), text: allValid ? Core.formatPercent(total) : '–' }),
+        h('div', { class: 'pct', style: 'color:' + (allValid ? sigInk(total) : 'var(--muted)'), text: allValid ? Core.formatPercent(total) : '–' }),
         h('div', {}, h('div', { class: 'verdict', text: allValid ? verdict(total) : 'Enter every hop distance' }),
           h('small', { class: 'hint', text: nodes.map((n, i) => nodeName(i)).join('  ⇄  ') }))));
       out.push(meter(total));
@@ -611,7 +631,7 @@
           h('td', {}, (j + 1) + '. ' + a + ' ⇄ ' + b),
           h('td', { class: 'num' }, valid[j] ? Core.formatDistance(hp.distance) : '–'),
           h('td', { class: 'num' }, hp.range > 0 ? Core.formatDistance(hp.range) : '–'),
-          h('td', { class: 'num', style: valid[j] ? 'font-weight:700;color:' + sigColor(hp.signal) : '' }, valid[j] ? Core.formatPercent(hp.signal) : '–'),
+          h('td', { class: 'num', style: valid[j] ? 'font-weight:700;color:' + sigInk(hp.signal) : '' }, valid[j] ? Core.formatPercent(hp.signal) : '–'),
           h('td', {}, valid[j] && (hp.signal < 0.5) ? h('button', { class: 'btn small', type: 'button', onclick: () => toFinder(j, dist[j]) }, 'Find antennas') : null));
       });
       out.push(h('div', { class: 'scroll' }, h('table', {},
@@ -690,7 +710,7 @@
 
     left.append(
       h('h2', { text: 'What antennas do I need?' }),
-      h('p', { class: 'hint', text: 'Enter the link you want to close. You’ll get the smallest antenna combinations that reach your target signal.' }),
+      h('p', { class: 'hint', text: 'Enter the link you want to close. You’ll get the smallest antenna combinations that reach your target signal. Range only: a planet or moon in the way can still block the link (see the Reach map’s line-of-sight check, or the Tracker and Relay planner).' }),
       h('div', { class: 'field' }, h('label', { text: 'Other end of the link' }), far.el),
       h('div', { class: 'field', style: 'margin-top:10px' }, h('label', { text: 'Distance between the two ends' }), dw.el),
       h('div', { class: 'field', style: 'margin-top:10px' }, h('label', {}, 'Target signal: ', targetLabel), target),
@@ -727,7 +747,7 @@
           h('thead', {}, h('tr', {}, h('th', { text: 'Setup' }), h('th', { class: 'num', text: 'Signal' }), h('th', { class: 'num', text: 'Mass' }), h('th', { class: 'num', text: 'Cost' }), h('th', { text: 'Tech' }), h('th'))),
           h('tbody', {}, rows.map((r) => h('tr', {},
             h('td', {}, r.setup.map((c, i) => [i ? ' + ' : '', c.count + '× ' + c.name])),
-            h('td', { class: 'num', style: 'font-weight:700;color:' + sigColor(r.signal) }, Core.formatPercent(r.signal)),
+            h('td', { class: 'num', style: 'font-weight:700;color:' + sigInk(r.signal) }, Core.formatPercent(r.signal)),
             h('td', { class: 'num', text: fmtMass(r.mass) }),
             h('td', { class: 'num', text: fmtInt(r.cost) }),
             h('td', { text: Array.from(new Set(r.setup.map((c) => techName(c.antenna.tech)))).join(', ') }),
@@ -752,6 +772,8 @@
 
   function buildReach(root) {
     const r = state.reach;
+    let los = null; // line-of-sight survey: { rev, data: Map(body -> {mean, worst, best}) }
+    let losBusy = false;
     const left = h('div', { class: 'card' });
     const right = h('div', { class: 'card', 'aria-live': 'polite' });
     root.append(h('div', { class: 'two-col' }, left, right));
@@ -797,6 +819,7 @@
         ? Data.DSN_LEVELS.map((l) => 'DSN ' + l.level + ' (' + Core.formatPower(l.power * s.dsnMod) + ')')
         : ['Closest', 'Midpoint', 'Farthest'];
       const rows = [];
+      const losData = los && los.rev === revision ? los.data : null;
       for (const b of enabledBodies()) {
         if (b.id === r.from) continue;
         const d = world.distanceRange(r.from, b.id);
@@ -807,13 +830,50 @@
         rows.push(h('tr', { class: b.parent ? 'moon' : '' },
           h('td', { text: b.name }),
           h('td', { class: 'num', text: dsnMode ? Core.formatDistance(d[r.at]) : Core.formatDistance(d.min) + ' – ' + Core.formatDistance(d.max) }),
-          cells.map((x) => h('td', { class: 'cell', style: 'background:' + sigColor(x), text: Core.formatPercent(x) }))));
+          cells.map((x) => h('td', { class: 'cell', style: 'background:' + sigColor(x), text: Core.formatPercent(x) })),
+          losData ? losCells(losData.get(b.id)) : null));
       }
       out.push(h('div', { class: 'scroll' }, h('table', { class: 'heat' },
-        h('thead', {}, h('tr', {}, h('th', { text: 'Body' }), h('th', { class: 'num', text: dsnMode ? 'Distance' : 'Distance range' }), heads.map((x) => h('th', { class: 'num', text: x })))),
+        h('thead', {}, h('tr', {}, h('th', { text: 'Body' }), h('th', { class: 'num', text: dsnMode ? 'Distance' : 'Distance range' }), heads.map((x) => h('th', { class: 'num', text: x })), losData ? [h('th', { class: 'num', text: 'Landed: average uptime' }), h('th', { class: 'num', text: 'Worst site' })] : null)),
         h('tbody', {}, rows))));
       out.push(h('div', { class: 'legend', style: 'margin-top:10px' }, [0, 0.25, 0.5, 0.75, 1].map((x) => h('span', {}, h('i', { style: 'background:' + sigColor(x) }), Math.round(x * 100) + '%')), h('span', { text: '· distances are the game’s 10,000-year extremes' })));
+      out.push(losControls(mine, dsnMode));
       right.replaceChildren(...out);
+    }
+
+    function losCells(d) {
+      if (!d) return [h('td', { class: 'cell', colspan: 2, text: 'no surface' })];
+      return [d.mean, d.worst].map((x) => h('td', { class: 'cell', style: 'background:' + sigColor(x), text: Core.formatPercent(x) }));
+    }
+
+    /** Optional extra: simulate real line of sight (bodies in the way, Kerbin’s rotation, orbits) over a year. */
+    function losControls(mine, dsnMode) {
+      const box = h('div', { class: 'hint', style: 'margin-top:12px' });
+      if (r.farKind !== 'dsn' || r.from !== 'Kerbin') {
+        box.append('Line-of-sight check: choose the DSN on Kerbin as the other end to unlock it. The columns above only look at range, not at bodies in the way.');
+        return box;
+      }
+      const btn = h('button', { class: 'btn', type: 'button' }, losBusy ? 'Computing…' : (los && los.rev === revision ? 'Recompute line of sight' : 'Add line-of-sight check'));
+      btn.disabled = losBusy;
+      btn.addEventListener('click', () => {
+        losBusy = true; btn.disabled = true;
+        const myRev = revision;
+        const gen = Pl.reachGen({
+          world: world, lookup: lookup, settings: simSettings(), power: mine, t0: 0, horizon: 426 * 21600, minSignal: 0.05,
+        }, enabledBodies().filter((b) => b.id !== r.from).map((b) => b.id));
+        (function tick() {
+          const stop = Date.now() + 30;
+          let st;
+          do { st = gen.next(); } while (!st.done && Date.now() < stop);
+          if (!st.done) { btn.textContent = 'Computing… ' + Math.round(st.value * 100) + '%'; setTimeout(tick, 0); return; }
+          losBusy = false;
+          los = { rev: myRev, data: new Map(st.value.map((x) => [x.body, x])) };
+          if (myRev === revision) update();
+        })();
+      });
+      box.append(btn, ' ', dsnMode ? 'Uses the Kerbin DSN at the Tracking Station level you set; ' : '',
+        'lands a vessel with these antennas at 8 spread-out sites per body and simulates a year of the real geometry (Kerbin’s rotation, planets and moons blocking the view). Needs a ground station in sight, so a single station caps every value near 50–70%.');
+      return box;
     }
     return { update: update };
   }
@@ -1058,9 +1118,9 @@
       h('div', { class: 'card' },
         h('h3', { text: 'Assumptions and limits' }),
         h('ul', {},
-          h('li', {}, 'The occlusion test and the radius rule (body radius × the occlusion modifier, no atmosphere height) are ported from the game’s own code. Whether Kerbol blocks signals is the one assumption left, because that is scene data; it can be switched off in the game settings.'),
+          h('li', {}, 'The occlusion test and the radius rule (body radius × the occlusion modifier, no atmosphere height) are ported from the game’s own code. Kerbol blocks signals like every other body (read from the game’s scene data: the Sun carries a CommNet body too), and signals take the path with the best product of link strengths (also read from the game’s code). The Kerbol switch in the game settings is only for what-if runs.'),
           h('li', {}, 'Orbits are two-body: no perturbations, so long-term drift (e.g. Mun’s effect on a Kerbin orbit) is ignored. Plasma blackout, extended/retracted antennas and Near Future reflectors are not modelled.'),
-          h('li', {}, 'For tidally locked moons other than the Mun, which side faces the parent is approximate. The Larkes ground station position is approximate.'),
+          h('li', {}, 'Which side of a tidally locked moon faces its parent, and where the Making History launch-site stations sit, come from the game’s own data files. Bodies from planet packs that don’t state a starting rotation use an approximation.'),
           h('li', {}, 'The distance pickers give the closest and farthest separations two bodies ever reach, a worst/best case rather than today’s distance.'))),
       h('div', { class: 'card' },
         h('h3', { text: 'Tips' }),
@@ -1138,6 +1198,7 @@
 
   function init() {
     $('#gv').textContent = Data.GAME_VERSION;
+    $('#app-version').textContent = 'v' + Data.APP_VERSION;
     $('#reset').addEventListener('click', () => {
       if (!window.confirm('Reset all settings, chains and custom antennas?')) return;
       try { window.localStorage.removeItem(STORE); } catch (e) { /* ignore */ }
@@ -1158,7 +1219,7 @@
   /* ================= shared API for the other UI modules ================= */
 
   window.KSPApp = {
-    h: h, $: $, sigColor: sigColor, fmtMass: fmtMass, fmtInt: fmtInt, techName: techName,
+    h: h, $: $, sigColor: sigColor, sigInk: sigInk, fmtMass: fmtMass, fmtInt: fmtInt, techName: techName,
     get state() { return state; },
     get world() { return world; },
     lookup: lookup,
@@ -1174,12 +1235,7 @@
     antennaEditor: antennaEditor,
     bodySelect: bodySelect,
     meter: meter,
-    /** Settings for the time-domain simulator, from the current game settings. */
-    simSettings: () => ({
-      rangeMod: state.settings.rangeMod, dsnPower: dsnPower(), occVac: state.settings.occVac, occAtm: state.settings.occAtm,
-      atmosphereBlocks: !!state.settings.atmoBlocks, sunOccludes: state.settings.sunOccludes !== false,
-      extraStations: !!state.settings.extraStations, larkes: !!state.settings.larkes, allowOtherLaunchSites: state.settings.allowOtherLaunchSites !== false,
-    }),
+    simSettings: simSettings,
     start: init,
   };
 })();

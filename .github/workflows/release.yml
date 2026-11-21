@@ -20,7 +20,7 @@ jobs:
       - name: Package
         run: |
           mkdir -p pkg/ksp-commnet-calculator
-          cp -r index.html css js README.md LICENSE SECURITY.md pkg/ksp-commnet-calculator/
+          cp -r index.html css js README.md CHANGELOG.md LICENSE SECURITY.md pkg/ksp-commnet-calculator/
           (cd pkg && zip -r "../ksp-commnet-calculator-${GITHUB_REF_NAME}.zip" ksp-commnet-calculator)
       - name: Create release
         env:

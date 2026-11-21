@@ -22,7 +22,7 @@
       return {
         id: d.id, name: d.name, pack: d.pack, radius: d.radius, gm: d.gm, atmo: d.atmo || 0, star: !!d.star,
         parent: useOpm ? d.opm.parent : d.parent, rot: useOpm && d.opm.rot ? d.opm.rot : d.rot,
-        orbit: useOpm ? d.opm.orbit : d.orbit, soi: d.soi || null, rot0: d.rot0 || 0, subParentLon: d.subParentLon,
+        orbit: useOpm ? d.opm.orbit : d.orbit, soi: d.soi || null, rot0: d.rot0 == null ? null : d.rot0, subParentLon: d.subParentLon,
       };
     });
     const byId = new Map(resolved.map((b) => [b.id, b]));
@@ -70,12 +70,15 @@
       b.orbitalPeriod = b._p ? b._p.period : Infinity;
       b.rotPeriod = b.rot === 'locked' ? b.orbitalPeriod : b.rot;
       b.locked = b.rot === 'locked';
-      // Tidally locked: choose the spin phase so the sub-parent longitude points at the parent at UT 0.
-      b.approxSpin = b.locked && b.subParentLon === null;
-      if (b.locked) {
+      // rot0 is the game's initialRotation. A tidally locked body spins once per orbit, so it alone fixes which side faces
+      // the parent. Without it (other planet packs): choose the phase so subParentLon points at the parent at UT 0.
+      const knownRot = b.rot0 !== null;
+      b.approxSpin = b.locked && !knownRot && b.subParentLon == null;
+      if (b.locked && !knownRot) {
         const facing = b._p.m0 / DEG + 180; // direction from the moon to its parent at t = 0 (circular approx.)
-        b.rot0 = facing - (b.subParentLon === null ? 0 : b.subParentLon);
+        b.rot0 = facing - (b.subParentLon == null ? 0 : b.subParentLon);
       }
+      if (b.rot0 === null) b.rot0 = 0;
       b.soiRadius = b.parentBody ? b.soi || Orb.sphereOfInfluence(b.orbit.a, b.gm, b.parentBody.gm) : Infinity;
       b.depth = b.parentBody ? b.parentBody.depth + 1 : 0; // star 0, planets 1, moons 2, sub-moons 3
       b.isMoon = b.depth >= 2;

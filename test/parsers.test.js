@@ -247,3 +247,21 @@ test('reads vessel orbits, landed positions and the save time', () => {
   assert.equal(s.vessels[1].lat, -3.2);
   assert.equal(s.vessels[1].orbit.ref, 2);
 });
+
+test('a transmitter that does not mention antennaCombinable does not combine (the game defaults it to false)', () => {
+  const cfg = `PART
+{
+  name = plainDish
+  mass = 0.1
+  MODULE
+  {
+    name = ModuleDataTransmitter
+    antennaType = DIRECT
+    antennaPower = 1000000
+  }
+}`;
+  const a = P.parseAntennaCfg(cfg);
+  assert.equal(a.length, 1);
+  assert.equal(a[0].combinable, false);
+  assert.equal(a[0].exp, 0);
+});

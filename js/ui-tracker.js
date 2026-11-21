@@ -37,7 +37,8 @@
     let viewR = null;
 
     /* ---------- layout ---------- */
-    const canvas = h('canvas', { class: 'tracker-canvas', role: 'img', 'aria-label': 'Top-down view of the tracked orbits and links' });
+    const canvas = h('canvas', { class: 'tracker-canvas', role: 'img', tabindex: '0', 'aria-label': 'Orbit view of the tracked vessels and links', 'aria-describedby': 'tracker-keys' });
+    const keysHint = h('small', { class: 'hint', id: 'tracker-keys', text: 'Keyboard (click the view first): + and − zoom, 0 fits, V switches top-down / edge-on, ← → step one hour (Shift: one day), Space plays or pauses.' });
     const legend = h('div', { class: 'legend', style: 'margin-top:6px' });
     const statusBox = h('div', { class: 'card' });
     const analysisBox = h('div', { class: 'card', 'aria-live': 'polite' });
@@ -49,6 +50,9 @@
     const speedSel = h('select', { 'aria-label': 'Playback speed' }, SPEEDS.map((s) => h('option', { value: String(s[1]), text: s[0] })));
     speedSel.value = String(tr.speed);
     speedSel.addEventListener('change', () => { tr.speed = parseFloat(speedSel.value); App.saveState(); });
+    const viewSel = h('select', { 'aria-label': 'Projection' }, h('option', { value: 'top', text: 'Top-down (orbital plane)' }), h('option', { value: 'side', text: 'Edge-on (shows inclination)' }));
+    viewSel.value = tr.view === 'side' ? 'side' : 'top';
+    viewSel.addEventListener('change', () => { tr.view = viewSel.value; App.saveState(); draw(); });
     const playBtn = h('button', { class: 'btn', type: 'button', 'aria-pressed': 'false' }, '▶ Play');
 
     function setUT(v) {
@@ -80,6 +84,18 @@
       }, 60);
     }
     playBtn.addEventListener('click', () => (playing ? stopPlay() : startPlay()));
+    canvas.addEventListener('keydown', (e) => {
+      const k = e.key;
+      if (k === '+' || k === '=') viewR = (viewR || autoView(App.world, tr.focus)) / 1.4;
+      else if (k === '-' || k === '_') viewR = (viewR || autoView(App.world, tr.focus)) * 1.4;
+      else if (k === '0') viewR = null;
+      else if (k === 'v' || k === 'V') { tr.view = tr.view === 'side' ? 'top' : 'side'; viewSel.value = tr.view; App.saveState(); }
+      else if (k === 'ArrowRight' || k === 'ArrowLeft') { setUT(sc.ut + (k === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 21600 : 3600)); e.preventDefault(); return; }
+      else if (k === ' ') { if (playing) stopPlay(); else startPlay(); }
+      else return;
+      e.preventDefault();
+      draw();
+    });
 
     const stepBtn = (label, sec) => h('button', { class: 'btn small', type: 'button', onclick: () => setUT(sc.ut + sec) }, label);
 
@@ -88,7 +104,8 @@
         h('div', { class: 'field' }, h('label', { text: 'Time (UT)' }), utIn),
         playBtn,
         h('div', { class: 'field' }, h('label', { text: 'Speed' }), speedSel),
-        h('div', { class: 'field' }, h('label', { text: 'View centred on' }), focusSel)),
+        h('div', { class: 'field' }, h('label', { text: 'View centred on' }), focusSel),
+        h('div', { class: 'field' }, h('label', { text: 'Projection' }), viewSel)),
       h('div', { class: 'seg', style: 'margin-top:8px' },
         stepBtn('−1 day', -21600), stepBtn('−1 h', -3600), stepBtn('+1 h', 3600), stepBtn('+1 day', 21600), stepBtn('+10 days', 216000),
         h('button', { class: 'btn small', type: 'button', onclick: () => { viewR = viewR ? viewR / 1.6 : autoView(App.world, tr.focus) / 1.6; draw(); } }, 'Zoom +'),
@@ -97,7 +114,7 @@
       h('div', { style: 'margin-top:6px' }, dateLbl));
 
     root.append(h('div', { class: 'two-col' },
-      h('div', {}, controls, h('div', { class: 'card', style: 'margin-top:12px' }, canvas, legend)),
+      h('div', {}, controls, h('div', { class: 'card', style: 'margin-top:12px' }, canvas, legend, keysHint)),
       h('div', {}, statusBox, analysisBox)));
 
     /* ---------- drawing ---------- */
@@ -129,7 +146,8 @@
       ctx.clearRect(0, 0, W, H);
       const snap = sim.snapshot(sc.ut);
       const bp = snap.bodyPos;
-      const cx0 = bp[focus.idx * 3], cy0 = bp[focus.idx * 3 + 1];
+      const AX = tr.view === 'side' ? 2 : 1; // second screen axis: y (top-down) or z (edge-on)
+      const cx0 = bp[focus.idx * 3], cy0 = bp[focus.idx * 3 + AX];
       const scale = (Math.min(W, H) / 2 - 14) / viewR;
       const px = (x) => W / 2 + (x - cx0) * scale;
       const py = (y) => H / 2 - (y - cy0) * scale;
@@ -146,7 +164,7 @@
         const N = 120;
         for (let k = 0; k <= N; k++) {
           Orb.positionAtE(b._p, (Orb.TAU * k) / N, tmp);
-          const X = px(bp[pi] + tmp[0]), Y = py(bp[pi + 1] + tmp[1]);
+          const X = px(bp[pi] + tmp[0]), Y = py(bp[pi + AX] + tmp[AX]);
           if (!started) { ctx.moveTo(X, Y); started = true; } else ctx.lineTo(X, Y);
         }
         ctx.strokeStyle = line;
@@ -159,7 +177,7 @@
         ctx.beginPath();
         for (let k = 0; k <= 90; k++) {
           Orb.positionAtE(n._p, (Orb.TAU * k) / 90, tmp);
-          const X = px(bp[pi] + tmp[0]), Y = py(bp[pi + 1] + tmp[1]);
+          const X = px(bp[pi] + tmp[0]), Y = py(bp[pi + AX] + tmp[AX]);
           if (k === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
         }
         ctx.strokeStyle = n.source && n.source.planned ? 'rgba(217,111,217,0.55)' : n.tracked ? 'rgba(110,168,255,0.55)' : 'rgba(240,180,41,0.55)';
@@ -169,7 +187,7 @@
       // bodies (+ dashed blocking spheres)
       ctx.font = '11px system-ui, sans-serif';
       w.bodies.forEach((b, i) => {
-        const x = bp[i * 3], y = bp[i * 3 + 1];
+        const x = bp[i * 3], y = bp[i * 3 + AX];
         if (!inView(x, y, 40)) return;
         const rr = Math.max(2.5, b.radius * scale);
         ctx.beginPath();
@@ -193,7 +211,7 @@
 
       // links
       for (const l of snap.links) {
-        const ax = snap.nodePos[l.a * 3], ay = snap.nodePos[l.a * 3 + 1], bx = snap.nodePos[l.b * 3], by = snap.nodePos[l.b * 3 + 1];
+        const ax = snap.nodePos[l.a * 3], ay = snap.nodePos[l.a * 3 + AX], bx = snap.nodePos[l.b * 3], by = snap.nodePos[l.b * 3 + AX];
         if (!inView(ax, ay, 400) && !inView(bx, by, 400)) continue;
         ctx.beginPath();
         ctx.moveTo(px(ax), py(ay));
@@ -208,7 +226,7 @@
       snap.results.forEach((r) => {
         if (!r.connected) return;
         ctx.beginPath();
-        r.path.forEach((ni, k) => { const X = px(snap.nodePos[ni * 3]), Y = py(snap.nodePos[ni * 3 + 1]); if (k === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y); });
+        r.path.forEach((ni, k) => { const X = px(snap.nodePos[ni * 3]), Y = py(snap.nodePos[ni * 3 + AX]); if (k === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y); });
         ctx.strokeStyle = App.sigColor(r.signal);
         ctx.lineWidth = 3;
         ctx.stroke();
@@ -217,7 +235,7 @@
 
       // nodes
       sim.nodes.forEach((n, i) => {
-        const x = snap.nodePos[i * 3], y = snap.nodePos[i * 3 + 1];
+        const x = snap.nodePos[i * 3], y = snap.nodePos[i * 3 + AX];
         if (!inView(x, y, 20)) return;
         const X = px(x), Y = py(y);
         if (n.home) {
@@ -239,7 +257,8 @@
       ctx.strokeStyle = muted; ctx.fillStyle = muted;
       ctx.beginPath(); ctx.moveTo(10, H - 12); ctx.lineTo(10 + bar * scale, H - 12); ctx.stroke();
       ctx.fillText(Core.formatDistance(bar, 2), 10, H - 16);
-      dateLbl.textContent = 'KSP date ' + Orb.formatUT(sc.ut) + ' · top-down projection (inclination not shown) · dashed white circles are the blocking spheres';
+      dateLbl.textContent = 'KSP date ' + Orb.formatUT(sc.ut) + (AX === 2 ? ' · edge-on projection (looking along the ecliptic plane, so inclination shows)' : ' · top-down projection (inclination not shown)') + ' · dashed white circles are the blocking spheres';
+      canvas.setAttribute('aria-label', (AX === 2 ? 'Edge-on' : 'Top-down') + ' orbit view at ' + Orb.formatUT(sc.ut) + '. ' + snap.results.map((r) => r.name + (r.connected ? ' connected at ' + Math.round(r.signal * 100) + '%' : ' not connected')).join('; ') + '.');
       return snap;
     }
 
@@ -350,7 +369,7 @@
         const ct = Pl.causeTable({ sources: [s] });
         parts.push(
           h('div', { class: 'big', style: 'margin-top:8px' },
-            h('div', { class: 'pct', style: 'color:' + App.sigColor(s.uptime), text: (s.uptime * 100).toFixed(s.uptime > 0.99 ? 2 : 1) + '%' }),
+            h('div', { class: 'pct', style: 'color:' + App.sigInk(s.uptime), text: (s.uptime * 100).toFixed(s.uptime > 0.99 ? 2 : 1) + '%' }),
             h('div', {}, h('div', { class: 'verdict', text: 'uptime · ' + s.blackouts.length + ' blackout' + (s.blackouts.length === 1 ? '' : 's') }),
               h('small', { class: 'hint', text: 'longest ' + Orb.formatDuration(s.longestBlackout) + ' · average signal while connected ' + Core.formatPercent(s.avgSignal) }))),
           timeline,

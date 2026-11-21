@@ -91,15 +91,17 @@
       const power = num(get(mod, 'antennaPower'));
       const type = String(get(mod, 'antennaType') || 'DIRECT').trim().toLowerCase();
       if (!(power > 0) || type === 'internal') return;
-      const combinable = bool(get(mod, 'antennaCombinable'));
+      // The game's ModuleDataTransmitter starts with antennaCombinable = false (read from its constructor), so a part
+      // that does not say it is combinable is not; exponent 0.75 and power 500k are the defaults for the other fields.
+      const combinable = bool(get(mod, 'antennaCombinable')) === true;
       const exp = num(get(mod, 'antennaCombinableExponent'));
       found.push({
         partName: partName,
         name: cleanTitle(getEntry(node, 'title'), partName),
         type: type === 'relay' ? 'relay' : 'direct',
         power: power,
-        combinable: combinable !== false,
-        exp: combinable === false ? 0 : exp === undefined ? 0.75 : exp,
+        combinable: combinable,
+        exp: !combinable ? 0 : exp === undefined ? 0.75 : exp,
         mass: num(get(node, 'mass')) || 0,
         cost: num(get(node, 'cost')) || 0,
         tech: get(node, 'TechRequired') || '',
@@ -121,7 +123,7 @@
     return v ? v[1] : undefined;
   };
   const kchild = (node, name) => node.children.find((c) => stripOp(c.name) === name);
-  const KSP_G0 = 9.81; // GM = geeASL * 9.81 * r^2 (reproduces the stock values)
+  const KSP_G0 = 9.80665; // GM = geeASL * 9.80665 * r^2 (exact for every stock body in the game's own data)
   const BIG_G = 6.6743e-11;
 
   /**

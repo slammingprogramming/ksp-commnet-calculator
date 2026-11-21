@@ -4,8 +4,9 @@
  *
  * Occlusion model (verified against the 1.12.5 assembly, CommNetBody.CreateOccluder): every body is a sphere of
  * radius (body radius x occlusion modifier), the atmosphere modifier for bodies with an atmosphere; atmosphere
- * height does not count (`atmosphereBlocks` can force it). Whether Kerbol carries an occluder is scene data that
- * can't be read from the code, so `sunOccludes` stays an assumption (default on).
+ * height does not count (`atmosphereBlocks` can force it). Kerbol is an occluder like every other body: the Sun's
+ * GameObject carries a CommNetBody in the game's scene data (all 17 stock bodies do), so `sunOccludes` is on by default;
+ * the switch only exists for what-if runs.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
@@ -22,7 +23,7 @@
     atmosphereBlocks: false,
     sunOccludes: true,
     extraStations: false, // "Enable Extra Groundstations"
-    larkes: false, // Making History station
+    makingHistory: false, // the DLC's two permanent launch-site stations (Desert, Larkes)
     allowOtherLaunchSites: true, // difficulty option; the permanent stations need it (or extra stations)
     minSignal: 0, // a path weaker than this counts as an outage (cause "weak")
   };
@@ -41,12 +42,14 @@
     // Blocking radius^2 per body.
     const occR2 = new Float64Array(nb);
     const occInv = new Float64Array(nb);
+    const occR = new Float64Array(nb);
     world.bodies.forEach((b, i) => {
       if (b.star && !st.sunOccludes) return;
       const mult = b.hasAtmo ? st.occAtm : st.occVac;
       const r = (b.radius + (st.atmosphereBlocks ? b.atmo : 0)) * mult;
       occR2[i] = r * r;
       occInv[i] = 1 / r;
+      occR[i] = r;
     });
 
     const nodes = [];
@@ -54,14 +57,14 @@
     const kerbin = world.index.get('Kerbin');
     if (kerbin) {
       for (const s of world.stations) {
-        if (s.dlc && !st.larkes) continue;
+        if (s.dlc && !st.makingHistory) continue;
         // Game rule (CommNetHome.CreateNode): extra stations off -> only KSC (plus permanent launch-site stations if
         // other launch sites are allowed); on -> all stations. Permanent ones keep a small fixed antenna.
         if (s.kind === 'anomaly' && !st.extraStations) continue;
         if (s.kind === 'permanent' && !(st.extraStations || st.allowOtherLaunchSites)) continue;
-        const power = s.kind === 'permanent' ? Data.DISCONNECTED_STATION_POWER : st.dsnPower;
+        const power = s.kind === 'permanent' ? s.power : st.dsnPower;
         nodes.push({
-          id: 'station:' + s.id, name: s.name, home: true, tracked: false, loc: { type: 'landed', body: 'Kerbin', lat: s.lat, lon: s.lon, alt: 0 },
+          id: 'station:' + s.id, name: s.name, home: true, tracked: false, loc: { type: 'landed', body: 'Kerbin', lat: s.lat, lon: s.lon, alt: s.alt || 0 },
           own: power, relay: power, power: power,
         });
       }
@@ -93,7 +96,10 @@
     const tmp = [0, 0, 0];
     const relSig = new Float64Array(n * n);
     const relRng = new Float64Array(n * n);
-    const relBlk = new Int16Array(n * n);
+    const relBlk = new Int16Array(n * n).fill(-1);
+    // Only nodes with relay power can form relay links; the rest of the matrix stays 0 / unblocked.
+    const relayIdx = [];
+    for (let i = 0; i < n; i++) if (nodes[i].relay > 0) relayIdx.push(i);
     const rowSig = new Float64Array(n);
     const rowRng = new Float64Array(n);
     const rowBlk = new Int16Array(n);
@@ -108,10 +114,17 @@
      * end lies toward the centre.
      */
     function blocker(ax, ay, az, bx, by, bz) {
+      // Cheap rejection first: a body can only matter if it touches the sphere that encloses the whole segment.
+      const mx = (ax + bx) / 2, my = (ay + by) / 2, mz = (az + bz) / 2;
+      const hx = bx - mx, hy = by - my, hz = bz - mz;
+      const half = Math.sqrt(hx * hx + hy * hy + hz * hz);
       for (let i = 0; i < nb; i++) {
         const r2 = occR2[i];
         if (r2 === 0) continue;
         const cx = bodyPos[i * 3], cy = bodyPos[i * 3 + 1], cz = bodyPos[i * 3 + 2];
+        const ux = cx - mx, uy = cy - my, uz = cz - mz;
+        const reach = half + occR[i];
+        if (ux * ux + uy * uy + uz * uz >= reach * reach) continue;
         let px = ax - cx, py = ay - cy, pz = az - cz, qx = bx - cx, qy = by - cy, qz = bz - cz;
         if (px * px + py * py + pz * pz > qx * qx + qy * qy + qz * qz) {
           const tx = px, ty = py, tz = pz;
@@ -160,10 +173,12 @@
     }
 
     function buildRelayMatrix() {
-      for (let i = 0; i < n; i++) {
-        relSig[i * n + i] = 0; relRng[i * n + i] = 0; relBlk[i * n + i] = -1;
-        for (let j = i + 1; j < n; j++) {
-          if (isHome[i] && isHome[j]) { relSig[i * n + j] = relSig[j * n + i] = 0; relRng[i * n + j] = relRng[j * n + i] = 0; relBlk[i * n + j] = relBlk[j * n + i] = -1; continue; }
+      const m = relayIdx.length;
+      for (let a = 0; a < m; a++) {
+        const i = relayIdx[a];
+        for (let b = a + 1; b < m; b++) {
+          const j = relayIdx[b];
+          if (isHome[i] && isHome[j]) continue; // never written: stays 0 / -1
           link(i, j, nodes[i].relay, nodes[j].relay, relSig, relRng, relBlk, i * n + j, 0);
           relSig[j * n + i] = relSig[i * n + j];
           relRng[j * n + i] = relRng[i * n + j];
@@ -235,6 +250,13 @@
       return trackedIdx.map(evalSource);
     }
 
+    /** Evaluate a single tracked source (index into trackedIdx) at time t; much cheaper than evalAt when refining edges. */
+    function evalOne(t, s) {
+      placeNodes(t);
+      buildRelayMatrix();
+      return evalSource(trackedIdx[s]);
+    }
+
     /** Positions and link states for drawing; also evaluates sources. */
     function snapshot(t) {
       const results = evalAt(t);
@@ -272,7 +294,7 @@
 
     return {
       world: world, settings: st, nodes: nodes, homeCount: homeCount, trackedIdx: trackedIdx, problems: problems,
-      evalAt: evalAt, snapshot: snapshot, suggestStep: suggestStep,
+      evalAt: evalAt, evalOne: evalOne, snapshot: snapshot, suggestStep: suggestStep,
     };
   }
 
@@ -283,8 +305,11 @@
   /**
    * Scan [t0, t1] for connection state changes of each tracked source.
    * Returns a stepper: call `run(budgetMs)` until it returns true, then read `.result`.
+   * `refineTol` (s, default 0.5) is how closely blackout edges are pinned down; the planner compares many candidates
+   * and passes a coarser value, reported timelines keep the default.
    */
-  function createScanner(sim, t0, t1, dt) {
+  function createScanner(sim, t0, t1, dt, refineTol) {
+    const tol = refineTol > 0.5 ? refineTol : 0.5;
     const srcs = sim.trackedIdx.map((i) => sim.nodes[i]);
     const S = srcs.length;
     const buckets = 1200;
@@ -299,9 +324,9 @@
     function refine(idx, ta, tb, ka) {
       // Find the transition time between ta (state ka) and tb (different) by bisection.
       let lo = ta, hi = tb;
-      for (let k = 0; k < 14 && hi - lo > 0.5; k++) {
+      for (let k = 0; k < 20 && hi - lo > tol; k++) {
         const mid = (lo + hi) / 2;
-        const r = sim.evalAt(mid)[idx];
+        const r = sim.evalOne(mid, idx);
         if (r.connected === ka) lo = mid; else hi = mid;
       }
       return (lo + hi) / 2;

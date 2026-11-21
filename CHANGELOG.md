@@ -1,0 +1,44 @@
+# Changelog
+
+All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioning](https://semver.org/).
+
+## [1.1.0] - unreleased
+
+### Corrected (all read from the game's own files)
+- **Kerbol blocks signals** (the Sun carries a CommNet body in the game's scene data, like all 17 stock bodies). The
+  "Kerbol blocks" switch stays, now labelled as a what-if.
+- **Signal paths** take the best product of link strengths (confirmed in `CommNetwork`), not an assumption any more.
+- **Ground stations:** only the Kerbal Space Center is always there. The five anomaly stations and Baikerbanur exist
+  only with *Enable Extra Groundstations*. The two Making History launch-site stations (Desert, Larkes) are weak
+  (40k) fixed antennas, present when other launch sites are allowed. Positions and power are read from the game, and
+  Baikerbanur is a normal DSN-rated station (it was wrongly treated as a launch-site station).
+- **Gravity constant** 9.80665 m/s² (was 9.81) for converting surface gravity to GM in imported planet packs; Pol's eccentricity.
+- **Spin phase** of every stock body is now the game's `initialRotation`, so which side of Mun, Minmus, Ike, Gilly,
+  Vall, Tylo, Bop, Pol faces its parent is exact instead of approximate.
+
+- **Mod antenna data re-checked by script** (`scripts/check-mod-data.js`, monthly in CI): added DMagic's Soil Moisture
+  Sensor (a 100G relay) and three ProbesPlus (Landvermesser) parts that were missing.
+- **Part-config import:** a transmitter that does not say `antennaCombinable` is now non-combinable, as in the game
+  (it used to be treated as combinable).
+- Light theme: accent and warning colours and the percentage text now meet WCAG AA contrast.
+
+### Added
+- **Reach map: line-of-sight check.** Optional extra columns simulate a year of real geometry for a lander on each body.
+- **Scenario export / import** as a JSON file, and a **share link** that carries the whole scenario in the URL
+  (compressed in the browser, nothing uploaded). Imports are validated and always ask before replacing anything.
+- **Relay planner:** a *What if I add a relay?* test, a *Plan for these vessels* selection, and *How to get them there*
+  (phasing orbit, periapsis, delta-v estimates), also in the copied plan text.
+- **Tracker:** edge-on projection (shows inclination) and keyboard control (zoom, fit, projection, time step, play) with a
+  spoken summary of the connection state.
+- Version label in the page footer, a browser smoke test in CI (`test/smoke/smoke.js`), README screenshots.
+- `tools/unityscan`: a small stdlib-only Python tool that reads the facts above out of a KSP install.
+
+### Faster
+- The relay planner is roughly a third faster on the reference scenarios (cheaper blackout-edge refinement, line-of-sight
+  pre-rejection, candidates compared at half resolution) and produces the same designs. It still runs entirely in
+  your browser.
+
+## [1.0.0] - 2026-11-19
+
+First public release: calculator, antenna finder, reach map, scenario, tracker, relay planner, antenna and planet-pack
+import, persistent.sfs import.

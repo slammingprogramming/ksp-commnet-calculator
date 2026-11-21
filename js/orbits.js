@@ -21,7 +21,9 @@
     M = M % TAU;
     if (M > Math.PI) M -= TAU;
     else if (M < -Math.PI) M += TAU;
-    let E = e < 0.8 ? M : Math.PI * (M < 0 ? -1 : 1);
+    if (e < 1e-12) return M; // circular: E = M exactly (most relay rings)
+    // Start from the first-order solution; Newton then needs 2-4 steps instead of 5-8.
+    let E = e < 0.8 ? M + e * Math.sin(M) : Math.PI * (M < 0 ? -1 : 1);
     for (let i = 0; i < 40; i++) {
       const f = E - e * Math.sin(E) - M;
       const d = f / (1 - e * Math.cos(E));

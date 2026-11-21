@@ -18,11 +18,21 @@ account, nothing leaves your browser.
 |---|---|
 | **Link & relay chain** | Build DSN → relay → relay → probe chains with range, distance and signal per hop, plus a direct-link check (the game always prefers a direct link). |
 | **Antenna finder** | Enter a distance and target signal; get the minimal antenna combinations, lightest, cheapest or fewest parts first. |
-| **Reach map** | See the signal at every body at its closest, midpoint and farthest distance, or across DSN levels 1–3. |
+| **Reach map** | See the signal at every body at its closest, midpoint and farthest distance, or across DSN levels 1–3, and optionally add a line-of-sight check that simulates a year of real geometry for a lander on each body. |
 | **Scenario** | Define the vessels, bases and relays to follow: any orbit (around any body, including the Sun) or a landed position, with antennas. Import your real fleet, orbits included, from a save. |
 | **Tracker** | Watch the system move: bodies, orbits, links and the spheres that block them. Play, step or jump through time, and analyze forward to list every blackout with its exact start, duration and cause. |
 | **Relay planner** | Diagnose *why* a vessel loses contact, then design fixes: relay rings around the blocking body, solar relays for conjunctions. Every fix is re-simulated, redundant ones are dropped, the lightest antennas are chosen, and the result is stress-tested on every difficulty preset. |
 | **Antennas & mods** | Toggle antenna packs, add your own antenna, import a mod's part `.cfg` files, or import a Kopernicus planet pack (new bodies join the distance pickers and the simulation). |
+
+## Screenshots
+
+![The relay planner: diagnosis, fixes, antennas and a difficulty stress test](docs/img/planner.png)
+
+![The tracker centred on the Mun, with the planned relay ring and live links](docs/img/tracker.png)
+
+![The reach map with the line-of-sight columns](docs/img/reach.png)
+
+![The scenario tab](docs/img/scenario.png)
 
 ## How the planner thinks
 
@@ -37,7 +47,9 @@ A signal is lost for a reason, and the reason decides the cure:
 * **Out of range or too weak** → more antenna power (sized last, so geometry is judged fairly).
 
 After each fix the whole scenario is simulated again over the look-ahead period, the remaining outage is re-diagnosed,
-and fixes made redundant by later ones are removed.
+and fixes made redundant by later ones are removed. You can also try your own idea (*What if I add a relay?*), leave
+vessels out of the goals, and read how to get the relays on station (phasing orbit, periapsis, delta-v estimate).
+Scenarios can be exported to a file or shared as a link that carries the whole scenario (nothing is uploaded).
 
 ## Using it
 
@@ -62,27 +74,29 @@ provenance and the verified antenna table.
 ## Accuracy and limits
 
 * Stock and Breaking Ground antennas were read from the KSP 1.12.5 part configs; mod antennas from each mod's current
-  GitHub part configs (checked 2026-09-29). Bodies come from the KSP Wiki and the Outer Planets Mod's configs (or
+  GitHub part configs (re-checked 2026-11-21 by `scripts/check-mod-data.js`, which also runs monthly in CI). Bodies come from the KSP Wiki and the Outer Planets Mod's configs (or
   any Kopernicus planet pack you import). The maths reproduces the KSP Wiki's worked examples (see `test/`).
-* The **occlusion test, antenna-combining rules, link rules and ground-station rules were read from the game's own
-  code** (see `docs/RESEARCH.md` §2). The one open assumption is whether Kerbol blocks signals (scene data); it can
-  be switched off in the app. Which ground stations are "permanent" (a weak fixed antenna) is inferred.
-* Orbits are two-body Kepler orbits: no perturbations, plasma blackout, retracted antennas or Near Future reflectors.
-* For tidally locked moons other than the Mun, the near/far side is approximate; the Making History "Larkes" station
-  position is approximate.
+* The **occlusion test (including that Kerbol blocks), path choice, antenna-combining rules, link rules, ground-station
+  rules and positions, and every stock body's spin phase were read from the game's own code and data files** (see
+  `docs/RESEARCH.md` §2; `tools/ildump` and `tools/unityscan` are the readers). Nothing the model relies on is a guess
+  any more for stock KSP; mods' own planets and stations are only as accurate as their configs.
+* Orbits are two-body Kepler orbits: no perturbations, plasma blackout, Near Future reflectors or signal-strength
+  multipliers. Antenna extension is not tracked: list only the antennas you deploy. Escape (hyperbolic) orbits are not imported.
 
 ## Development
 
 ```
 npm test        # unit tests (Node's built-in runner)
 npm start       # static dev server on :8080
+npm install --no-save playwright-core && node test/smoke/smoke.js   # browser smoke test (needs Chrome; CI runs it)
+node scripts/check-mod-data.js    # compare the bundled mod antennas with the mods' repositories (needs git and network)
 ```
 
 `js/core.js` is the link maths, `js/orbits.js` Kepler propagation and the KSP calendar, `js/world.js` the body tree and
 distances, `js/sim.js` the time-domain simulator (nodes, occlusion, paths, blackout scanner), `js/planner.js` the relay
 planner, `js/data.js` antennas, bodies and stations, `js/parsers.js` part-cfg and save-file readers, and `js/app.js`
 plus `js/ui-*.js` the interface. Everything is plain scripts (no build step), so the app also runs from `file://`.
-`tools/ildump` is the small IL disassembler used to read the game's CommNet rules (see its README for the legal note).
+`js/share.js` is scenario export/import and share-link validation. `tools/ildump` (IL disassembler) and `tools/unityscan` (Unity asset reader) are the small tools used to read the game's CommNet rules and data (see their READMEs for the legal note). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 To add or correct an antenna, edit the `ROWS` table in `js/data.js` (and check it against the mod's or game's own

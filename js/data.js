@@ -15,6 +15,7 @@
   'use strict';
 
   const GAME_VERSION = '1.12.5';
+  const APP_VERSION = '1.1.0'; // keep equal to package.json (a test checks it)
 
   const TECH = {
     start: 'Start',
@@ -33,6 +34,7 @@
     advUnmanned: 'Advanced Unmanned Tech',
     automation: 'Automation',
     largeUnmanned: 'Large Probes',
+    largeElectrics: 'High-Power Electrics',
     advElectrics: 'Advanced Electrics',
     advConstruction: 'Advanced Construction',
     advScienceTech: 'Advanced Science Tech',
@@ -87,6 +89,8 @@
     // DMagic Orbital Science: SIGINT dishes are relays, 10x stronger than older community listings.
     ['dmagic', 'Undersize Signals Intelligence Satellite', ['dmSIGINT.Small'], 'relay', 1e12, 0.75, 1, 7000, 'miniaturization', 2, 0.1, 25],
     ['dmagic', 'Oversize Signals Intelligence Satellite', ['dmSIGINT', 'dmSIGINT.End'], 'relay', 1e13, 0.75, 4, 14000, 'electronics', 4, 0.08, 55],
+    // The Soil Moisture Sensor doubles as a 100G relay (found by scripts/check-mod-data.js, 2026-11-21). Its Universal Storage variant is not researchable and is left out.
+    ['dmagic', 'Soil Moisture Sensor', ['dmSoilMoisture'], 'relay', 1e11, 0.75, 0.04, 4500, 'largeElectrics', 4, 0.2, 30],
 
     // JX2Antenna
     ['jx2', 'JU1 Medium Deployable Antenna', ['ju1MDA'], 'relay', 3e11, 0.75, 1.2, 18000, 'largeUnmanned', 4, 0.35, 22],
@@ -116,6 +120,10 @@
     ['probesplus', 'CA-MER-A400 Meridiani Dish Antenna', ['mer_dish'], 'relay', 1e11, 0.75, 0.5, 3780, 'composites', 4, 0.35, 24],
     // Probes Plus parts with an integrated antenna (matched when importing saves; not offered by the finder).
     ['probesplus', 'CA-L1200 Draco lander (integrated)', ['ca_draco'], 'direct', 5.5e5, 0, 0, 0, '', 2.2, 0.6, 5, { builtin: true }],
+    // Landvermesser antennas, added after scripts/check-mod-data.js found them upstream (2026-11-21).
+    ['probesplus', 'CA-AE20 HGA Antenna and Solar Panel', ['ca_landv_hga'], 'direct', 1e6, 0.75, 0.035, 500, 'engineering101', 2, 0.35, 12],
+    ['probesplus', 'CA-A07 Landvermesser Omni Antenna', ['ca_landv_omni'], 'direct', 5.05e5, 1, 0.007, 150, 'engineering101', 2, 0.6, 12],
+    ['probesplus', 'CA-A20-B HGA Antenna', ['ca_landv_orbiter_HGA'], 'direct', 1e6, 0.75, 0.022, 400, 'engineering101', 2, 0.35, 12],
     ['probesplus', 'CAE-L165 Fomalhaut lander (integrated)', ['ca_fom_lander'], 'direct', 5.5e5, 0, 0, 0, '', 2.2, 0.6, 6, { builtin: true }],
     ['probesplus', 'CA-MER-LEU Meridiani equipment (integrated)', ['ca_mer_leu'], 'direct', 5.5e5, 0, 0, 0, '', 2.2, 0.6, 12, { builtin: true }],
     ['probesplus', 'CA-T8E Explorer telescope (integrated)', ['ca_explorer'], 'direct', 5.5e5, 0, 0, 0, '', 2.2, 0.6, 12, { builtin: true }],
@@ -183,35 +191,36 @@
    * Orbits are about the parent, in one shared reference frame (KSP has no axial tilts, so every
    * equator lies in the reference plane). a: semi-major axis (m), e, i / lan / w in degrees,
    * m0: mean anomaly at `epoch` (rad, 3.14 not pi: that is what the game files use), epoch in UT seconds.
-   * rot: sidereal rotation period (s), or 'locked' when tidally locked. atmo: atmosphere height (m).
-   * subParentLon: longitude (deg E) that faces the parent body for a tidally locked moon. Known for the Mun
-   * (47 26' 10" E); other locked moons default to 0 and their near/far sides are approximate.
+   * rot: sidereal rotation period (s; Kerbin's 21549.4 s is the game's 21600 s solar day converted), or 'locked'. atmo: atmosphere height (m).
+   * rot0: the game's initialRotation (deg) at UT 0, read from the 1.12.5 body prefabs. For a tidally locked moon the spin
+   * period is its orbital period, so rot0 fixes which side faces the parent (the Mun's sub-Kerbin longitude comes out at
+   * 47.4 E). Bodies without rot0 (other planet packs) fall back to subParentLon / an approximation.
    */
-  const G0 = 9.81; // KSP's gravitational scale: GM = geeASL * 9.81 * radius^2
+  const G0 = 9.80665; // standard gravity: GM = geeASL * 9.80665 * radius^2 (read from the game: this ratio is exact for every stock body)
   const orb = (a, e, i, lan, w, m0, epoch) => ({ a: a, e: e, i: i, lan: lan, w: w, m0: m0, epoch: epoch || 0 });
   const gmFromGee = (gee, radius) => gee * G0 * radius * radius;
 
   // [id, name, parent, pack, radius, gm, atmo, rot, orbit, extra]
   const BODY_ROWS = [
     ['Kerbol', 'Kerbol', null, 'stock', 261600000, 1.1723328e18, 600000, 432000, null, { star: true }],
-    ['Moho', 'Moho', 'Kerbol', 'stock', 250000, 1.6860938e11, 0, 1210000, orb(5263138304, 0.2, 7, 70, 15, 3.14)],
-    ['Eve', 'Eve', 'Kerbol', 'stock', 700000, 8.1717302e12, 90000, 80500, orb(9832684544, 0.01, 2.1, 15, 0, 3.14)],
-    ['Gilly', 'Gilly', 'Eve', 'stock', 13000, 8289449.8, 0, 28255, orb(31500000, 0.55, 12, 80, 10, 0.9)],
-    ['Kerbin', 'Kerbin', 'Kerbol', 'stock', 600000, 3.5316e12, 70000, 21549.425, orb(13599840256, 0, 0, 0, 0, 3.14)],
-    ['Mun', 'Mun', 'Kerbin', 'stock', 200000, 6.5138398e10, 0, 'locked', orb(12000000, 0, 0, 0, 0, 1.7), { subParentLon: 47.436 }],
-    ['Minmus', 'Minmus', 'Kerbin', 'stock', 60000, 1.7658e9, 0, 40400, orb(47000000, 0, 6, 78, 38, 0.9)],
-    ['Duna', 'Duna', 'Kerbol', 'stock', 320000, 3.0136321e11, 50000, 65517.859, orb(20726155264, 0.051, 0.06, 135.5, 0, 3.14)],
-    ['Ike', 'Ike', 'Duna', 'stock', 130000, 1.8568369e10, 0, 'locked', orb(3200000, 0.03, 0.2, 0, 0, 1.7)],
-    ['Dres', 'Dres', 'Kerbol', 'stock', 138000, 2.1484489e10, 0, 34800, orb(40839348203, 0.145, 5, 280, 90, 3.14)],
-    ['Jool', 'Jool', 'Kerbol', 'stock', 6000000, 2.82528e14, 200000, 36000, orb(68773560320, 0.05, 1.304, 52, 0, 0.1)],
-    ['Laythe', 'Laythe', 'Jool', 'stock', 500000, 1.962e12, 50000, 'locked', orb(27184000, 0, 0, 0, 0, 3.14)],
-    ['Vall', 'Vall', 'Jool', 'stock', 300000, 2.074815e11, 0, 'locked', orb(43152000, 0, 0, 0, 0, 0.9)],
-    ['Tylo', 'Tylo', 'Jool', 'stock', 600000, 2.82528e12, 0, 'locked', orb(68500000, 0, 0.025, 0, 0, 3.14)],
-    ['Bop', 'Bop', 'Jool', 'stock', 65000, 2.4868349e9, 0, 'locked', orb(128500000, 0.235, 15, 10, 25, 0.9)],
-    ['Pol', 'Pol', 'Jool', 'stock', 44000, 7.2170208e8, 0, 'locked', orb(179890000, 0.171, 4.25, 2, 15, 0.9)],
+    ['Moho', 'Moho', 'Kerbol', 'stock', 250000, 1.6860938e11, 0, 1210000, orb(5263138304, 0.2, 7, 70, 15, 3.14), { rot0: 190 }],
+    ['Eve', 'Eve', 'Kerbol', 'stock', 700000, 8.1717302e12, 90000, 80500, orb(9832684544, 0.01, 2.1, 15, 0, 3.14), { rot0: 0 }],
+    ['Gilly', 'Gilly', 'Eve', 'stock', 13000, 8289449.8, 0, 28255, orb(31500000, 0.55, 12, 80, 10, 0.9), { rot0: 5 }],
+    ['Kerbin', 'Kerbin', 'Kerbol', 'stock', 600000, 3.5316e12, 70000, 21549.425, orb(13599840256, 0, 0, 0, 0, 3.14), { rot0: 90 }],
+    ['Mun', 'Mun', 'Kerbin', 'stock', 200000, 6.5138398e10, 0, 'locked', orb(12000000, 0, 0, 0, 0, 1.7), { rot0: 230 }],
+    ['Minmus', 'Minmus', 'Kerbin', 'stock', 60000, 1.7658e9, 0, 40400, orb(47000000, 0, 6, 78, 38, 0.9), { rot0: 230 }],
+    ['Duna', 'Duna', 'Kerbol', 'stock', 320000, 3.0136321e11, 50000, 65517.859, orb(20726155264, 0.051, 0.06, 135.5, 0, 3.14), { rot0: 90 }],
+    ['Ike', 'Ike', 'Duna', 'stock', 130000, 1.8568369e10, 0, 'locked', orb(3200000, 0.03, 0.2, 0, 0, 1.7), { rot0: 0 }],
+    ['Dres', 'Dres', 'Kerbol', 'stock', 138000, 2.1484489e10, 0, 34800, orb(40839348203, 0.145, 5, 280, 90, 3.14), { rot0: 25 }],
+    ['Jool', 'Jool', 'Kerbol', 'stock', 6000000, 2.82528e14, 200000, 36000, orb(68773560320, 0.05, 1.304, 52, 0, 0.1), { rot0: 0 }],
+    ['Laythe', 'Laythe', 'Jool', 'stock', 500000, 1.962e12, 50000, 'locked', orb(27184000, 0, 0, 0, 0, 3.14), { rot0: 90 }],
+    ['Vall', 'Vall', 'Jool', 'stock', 300000, 2.074815e11, 0, 'locked', orb(43152000, 0, 0, 0, 0, 0.9), { rot0: 0 }],
+    ['Tylo', 'Tylo', 'Jool', 'stock', 600000, 2.82528e12, 0, 'locked', orb(68500000, 0, 0.025, 0, 0, 3.14), { rot0: 0 }],
+    ['Bop', 'Bop', 'Jool', 'stock', 65000, 2.4868349e9, 0, 'locked', orb(128500000, 0.235, 15, 10, 25, 0.9), { rot0: 230 }],
+    ['Pol', 'Pol', 'Jool', 'stock', 44000, 7.2170208e8, 0, 'locked', orb(179890000, 0.17085, 4.25, 2, 15, 0.9), { rot0: 25 }],
     ['Eeloo', 'Eeloo', 'Kerbol', 'stock', 210000, 7.4410815e10, 0, 19460, orb(90118820000, 0.26, 6.15, 50, 260, 3.14),
       // With Outer Planets Mod installed, Eeloo is moved to orbit Sarnus.
-      { opm: { parent: 'Sarnus', rot: 'locked', orbit: orb(19105978, 0.0034, 2.3, 55, 260, 3.14) } }],
+      { rot0: 25, opm: { parent: 'Sarnus', rot: 'locked', orbit: orb(19105978, 0.0034, 2.3, 55, 260, 3.14) } }],
 
     // Outer Planets Mod (Kopernicus configs; gm from geeASL)
     ['Sarnus', 'Sarnus', 'Kerbol', 'opm', 5300000, gmFromGee(0.298, 5300000), 580000, 28500, orb(125798522368, 0.0534, 2.02, 184, 0, 2.88114666938782, 359.279999999964)],
@@ -236,6 +245,7 @@
     return {
       id: r[0], name: r[1], parent: r[2], pack: r[3], radius: r[4], gm: r[5], atmo: r[6], rot: r[7], orbit: r[8],
       star: !!extra.star, soi: extra.soi || null, opm: extra.opm || null, subParentLon: extra.subParentLon === undefined ? null : extra.subParentLon,
+      rot0: extra.rot0 === undefined ? null : extra.rot0,
     };
   });
 
@@ -245,25 +255,23 @@
   ];
 
   /* ---------------- ground stations (all on Kerbin) ----------------
-   * The Kerbal Space Center is the DSN. The others only carry the DSN rating when the difficulty option
-   * "Enable Extra Groundstations" is on; otherwise they are ~36k antennas.
+   * The Kerbal Space Center is the DSN. All other homes are rules of CommNetHome.CreateNode (see the notes per entry).
    */
   const STATIONS = [
     { id: 'KSC', name: 'Kerbal Space Center', lat: -0.0972092, lon: -74.557677, kind: 'main', main: true },
-    // "anomaly" stations only exist when the difficulty option Enable Extra Groundstations is on, then at the DSN rating.
+    // "anomaly" = every home that is not permanent: it only exists when the difficulty option "Enable Extra Groundstations"
+    // is on, and then carries the DSN rating. (Baikerbanur is the game object "KSC2": isPermanent is false in the prefab.)
     { id: 'CraterRim', name: 'Crater Rim', lat: 9.45, lon: -172.110278, kind: 'anomaly' },
     { id: 'NyeIsland', name: 'Nye Island', lat: 5.363611, lon: 108.548056, kind: 'anomaly' },
     { id: 'HarvesterMassif', name: 'Harvester Massif', lat: -11.95, lon: 33.740278, kind: 'anomaly' },
     { id: 'NorthStationOne', name: 'North Station One', lat: 63.095, lon: -90.079722, kind: 'anomaly' },
     { id: 'MesaSouth', name: 'Mesa South', lat: -59.589722, lon: -25.861667, kind: 'anomaly' },
-    // "permanent" stations (launch-site relays) have a fixed small antenna instead of the DSN rating. They exist when
-    // extra ground stations or "Allow Other Launch Sites" is on. (Which stations are permanent and their power are
-    // inferred from the wiki, not read from the game.)
-    { id: 'Baikerbanur', name: 'Baikerbanur', lat: 20.679167, lon: -146.501111, kind: 'permanent' },
-    // Making History only; ~10 km south of the Woomerang launch site (45.29 N, 136.11 E). Position approximate.
-    { id: 'Larkes', name: 'Larkes (Making History, approx.)', lat: 44.34, lon: 136.11, kind: 'permanent', dlc: 'making-history' },
+    { id: 'Baikerbanur', name: 'Baikerbanur', lat: 20.679167, lon: -146.501111, kind: 'anomaly' },
+    // "permanent" = isPermanent in the game data: a fixed small antenna instead of the DSN rating, present when extra
+    // stations are on OR "Allow Other Launch Sites" is on. Both belong to Making History (read from its asset bundle).
+    { id: 'Desert', name: 'Desert Launch Site (Making History)', lat: -6.56, lon: -143.95, alt: 820, kind: 'permanent', power: 40e3, dlc: 'making-history' },
+    { id: 'Larkes', name: 'Larkes (Making History)', lat: 44.72, lon: 137.03, alt: 0, kind: 'permanent', power: 40e3, dlc: 'making-history' },
   ];
-  const DISCONNECTED_STATION_POWER = 36e3;
 
   /* ---------------- project links (shown in the app footer and the "How it works" tab) ----------------
    * Keep identical to README.md; test/contact.test.js checks that every copy matches.
@@ -283,6 +291,7 @@
 
   return {
     GAME_VERSION: GAME_VERSION,
+    APP_VERSION: APP_VERSION,
     TECH: TECH,
     PACKS: PACKS,
     antennas: antennas,
@@ -291,7 +300,6 @@
     BODY_PACKS: BODY_PACKS,
     bodies: bodies,
     STATIONS: STATIONS,
-    DISCONNECTED_STATION_POWER: DISCONNECTED_STATION_POWER,
     SUPPORT: SUPPORT,
     G0: G0,
     // Calendar: 6-hour days, 426-day years.

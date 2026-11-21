@@ -40,16 +40,19 @@ The rules below were read from the 1.12.5 `Assembly-CSharp.dll` with `tools/ildu
   `L = −d·p1`): if the nearer endpoint is outside it is blocked when `L > A` and `L²/|d|² > A`, which is the
   ordinary segment-vs-sphere test; if it is *inside* the sphere it is blocked only when `L > 0` (looking toward the
   centre), so a node inside a (modifier > 1) sphere can still see outward. The simulator ports this exactly.
-* *Not* settled by the code: whether Kerbol carries a `CommNetBody`. The component is attached in the Unity scene,
-  which can't be read from the IL, so "Kerbol blocks" remains an assumption (default on, switchable).
+* **Kerbol blocks.** The Sun's GameObject carries a `CommNetBody` like the other 16 stock bodies. That is scene data, not
+  IL, so it was read with `tools/unityscan` from the game's serialized scene files (`sharedassets*.assets`). The
+  "Kerbol blocks" switch in the app is therefore only a what-if.
 
 **Ground stations** (`CommNetHome.CreateNode`)
 * With the difficulty option *Enable Extra Groundstations* **off**, only KSC exists, plus nodes flagged
   `isPermanent` (launch-site relays) when *Allow Other Launch Sites* is on. The five anomaly stations (Crater Rim,
   Nye Island, Harvester Massif, North Station One, Mesa South) are removed entirely. With the option **on**, all exist.
 * A non-permanent station's rating is the DSN level (`GetDSNRange`: 2G / 50G / 250G, the wiki values); a permanent
-  one uses its own fixed `antennaPower`. Which stations are permanent and their power (the wiki's "~36k") is
-  *inferred*, not read: the workbench treats Baikerbanur and Larkes as permanent, 36 kilo.
+  one uses its own fixed `antennaPower`. Read with `tools/unityscan` from the scene data and the Making History asset
+  bundle: the **permanent** stations are the two Making History launch sites, *Desert* (-6.56, -143.95, altitude
+  820 m) and *Larkes* (44.72, 137.03), each with `antennaPower` **40000**. **Baikerbanur is not permanent**: it is a
+  normal DSN-rated station that exists only with extra ground stations (the earlier assumption was wrong).
 
 **Links and paths** (`CommNetwork.TryConnect`, `CommLink.GetSignalStrength`, `CommRangeModel`)
 * Range `= sqrt(Pa·Pb)`; normalized range `= 1 − d/sqrt(Pa·Pb)`; signal = the Bezier curve (0,0)-(1,1), i.e. 3x²−2x³;
@@ -57,8 +60,8 @@ The rules below were read from the 1.12.5 `Assembly-CSharp.dll` with `tools/ildu
 * A link stores three strengths: relay×relay, relay(A)×transmit(B), transmit(A)×relay(B). For a path, a link that
   touches the path's **source** may use that end's `transmit`; **every other link uses relay×relay only**. This is
   exactly the workbench's rule (own power for the source's links, relay power elsewhere).
-* Paths go to the best home node by maximizing the strength (assumed to be the product; the cost arithmetic is
-  not fully decoded).
+* Paths go to the best home node by maximizing the product of the link strengths (read from the shortest-path
+  search in `CommNetwork`, `UpdateShortestPath` and the cost it uses).
 
 **A vessel's antenna powers** (`CommNetVessel.UpdateComm`)
 * Antennas are split into direct+internal (D) and relay (R); only *combinable* antennas add. `relay` = max(best R,
@@ -67,6 +70,14 @@ The rules below were read from the 1.12.5 `Assembly-CSharp.dll` with `tools/ildu
   multiplied by the Range Modifier. A link at the source uses the better of transmit and relay.
 * `antennaCombinableExponent` defaults to 0.75, `antennaPower` to 500000 (`ModuleDataTransmitter` constructor);
   weighted exponent and `strongest × (Σ/strongest)^e` are as the wiki says. `core.antennaPowers` ports this.
+* `antennaCombinable` is **not** initialised in that constructor, so it defaults to `false`: a part config that does
+  not mention it is non-combinable (the importer in `js/parsers.js` follows this).
+
+**Bodies from the game's data** (`tools/unityscan`, the `CelestialBody` prefabs)
+* The gravity constant behind `geeASL` is **9.80665** (not 9.81); all 17 stock radii and orbits agree with the data.
+* Each body's `initialRotation` fixes its spin phase. Kerbin's prefab period 21600 s is the *solar* day (sidereal
+  21549.425 s). Tidally locked moons spin once per orbit and `initialRotation` says which side faces the parent
+  (Mun 230 gives sub-Kerbin longitude 47.4°E). The table is in `js/data.js` (`rot0`) and `test/gamedata.test.js`.
 
 ## 3. Bodies and orbits
 
@@ -113,10 +124,15 @@ Breaking Ground (deployed science only): Experiment Control Station 500 k (exp 1
 Making History adds no comm parts. (The Reflectron KR-7 / KR-14 / GX-128 / DP-10 in some search results are
 RemoteTech parts.)
 
-## 5. Mod antennas: checked against the mods' current configs (2026-09-29)
+## 5. Mod antennas: checked against the mods' current configs (2026-11-21)
 
 Each mod's part configs were read from its GitHub repository and compared with the community listing that inspired
-this project.
+this project. Since 2026-11-21 the check is a script, `node scripts/check-mod-data.js` (also run monthly by a GitHub
+workflow): it shallow-clones the repositories, parses every part with the app's own parser and compares power, type,
+exponent, mass and cost. The 2026-11-21 run matched ReStock+ (4), Near Future Exploration (18), DMagic (5),
+JX2Antenna (3) and ProbesPlus (28 parts) after adding what it found: DMagic's **Soil Moisture Sensor is a 100G
+relay** (its Universal Storage twin is unresearchable and left out) and three new ProbesPlus parts (the Landvermesser antennas). CommNet Antennas
+Extension patches other mods' parts through ModuleManager, so it is still checked by hand (last 2026-09-29).
 
 | Mod | Result |
 |---|---|
@@ -125,7 +141,7 @@ this project.
 | JX2Antenna | All 3 match. |
 | CommNet Antennas Extension | Powers match, but several packet values were stale (e.g. EXP-VR-2T interval 0.3 s / 16 EC, RA-25 3 Mit / 30 EC, "Tigger" 28 EC). It patches RemoteTech's part names. |
 | **DMagic Orbital Science** | **The listing was wrong by 10×:** Oversize SIGINT is a **10 T relay** (was 1 T direct), Undersize SIGINT a **1 T relay** (was 10 G direct); exponent default 0.75 (not 0). |
-| ProbesPlus | Values match, but the current pack has ~10 more antennas (Argo dishes/masts, Vorona dish, Meridiani dish, integrated antennas) and no longer has the "landv" parts. |
+| ProbesPlus | Values match, but the current pack has ~10 more antennas (Argo dishes/masts, Vorona dish, Meridiani dish, integrated antennas) and the Landvermesser (`landv`) parts, which were added to the data on 2026-11-21. |
 | Vens' Stock Revamp | Obsolete: it no longer defines antennas (its HG-20 model became CAE's HG-32). Removed. |
 
 Parts with no `antennaCombinable` key default to non-combinable (e.g. Probes Plus integrated antennas).
@@ -139,8 +155,10 @@ reachability matrix and the difficulty modifiers; the implementation and data ar
 
 ## 7. Known gaps
 
-* Occlusion rule details (section 2); atmosphere and Sun handling are assumptions.
 * Whether the game's path-finder ever prefers a relayed path over a working direct one (wiki says no).
-* Spin phase of tidally locked moons other than the Mun; Larkes station position.
+* Spin phase and station positions for bodies and sites added by mods (the stock ones are read from the game).
+* Not modelled because nothing verifiable is available: plasma blackout, Near Future reflectors, signal-strength
+  multipliers, orbital perturbations. Hyperbolic (escape) orbits are not imported: a vessel leaving a sphere of
+  influence changes its orbit, which this model does not follow.
 * Two-body orbits only; the game itself is patched-conics, so vessels behave the same way, but Kopernicus binaries
   (Plock-Karen) are simplified.
