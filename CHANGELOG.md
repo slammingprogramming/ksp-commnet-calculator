@@ -2,6 +2,43 @@
 
 All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-11-22
+
+### Added
+- **Network tab:** who can reach whom over time (a pairwise matrix between vessels and the DSN), the network right now
+  (connected, separate groups, vessels with no relay), **redundancy** (each relay removed in turn to find single points of
+  failure), a table of every ground station with per-station on/off overrides and custom stations, and **Compare
+  station sets** (Kerbal Space Center only, plus the Making History launch-site stations, plus the extra stations, all).
+  The Making History stations (Desert, Larkes) are plannable like any other.
+- **Reentry tab (plasma blackout):** the game's exact blackout rules (shock temperature, density and dynamic-pressure
+  thresholds, link angle), with atmosphere curves read from the game for Kerbin, Eve, Duna, Jool and Laythe. Describe an
+  entry by orbit or by speed and angle; see where signal is lost and returns, peak deceleration and shock temperature,
+  the highest speed that avoids blackout, and an altitude/speed map.
+- **Launch windows tab:** Lambert-based transfer windows between planets or moons (leaving, arrival and total delta-v).
+- **Manoeuvre burns** on orbiting vessels (prograde, normal, radial), carried through patched conics, the tracker,
+  every simulation and export/share files.
+- **Relay planner:** a budget (most relays, mass, cost), an uptime target per vessel, elliptical relay orbits as a new
+  fix shape, and a choice of coverage-map resolution.
+- **Distance picker:** measure the line-of-sight between two vessels of the scenario.
+- **Tracker:** drag to pan, scroll or pinch to zoom, `W` `A` `S` `D` to move; works on touch screens.
+- **Works offline:** a service worker and web-app manifest (installable from the Pages site); a Content-Security-Policy
+  that forbids network access and inline scripts.
+- **Planet packs:** Real Solar System style packs now work: a pack that defines its own Kerbin replaces the stock system,
+  degree-valued mean anomalies, relative radius edits and the star are applied, and the calendar follows the home world
+  (24-hour days, 365-day years for Earth). Tested against the real RSS configs.
+- Documentation: guides for the Network, Reentry and Launch windows tabs, and updated model, planner, scenario, tracker
+  and mod guides; light-theme screenshot.
+
+### Fixed
+- **Share links did not open** (the Scenario tab was only built after the link had been read): a link now opens the
+  Scenario tab and offers to load the scenario. The browser smoke test covers a round trip.
+- Imported mod bodies named like a stock body no longer disappear behind the stock one.
+- The scenario's burn total updates when a field is left.
+
+### Changed
+- The browser smoke test also covers burns, the tracker's mouse and keyboard moves, share-link round trip, save import
+  from a made-up save, the planner budget fields and a phone-sized screen.
+
 ## [1.1.1] - 2026-11-22
 
 ### Documentation

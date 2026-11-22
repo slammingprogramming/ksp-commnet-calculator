@@ -88,7 +88,10 @@
       custom: { packs: [], antennas: [], bodyPacks: [] },
       scenario: { nodes: [], ut: 0, nextId: 1 },
       tracker: { focus: 'Kerbol', speed: 3600, horizon: 426 * 21600, view: 'top' },
-      planner: { horizon: 2, target: 99.5, minSignal: 20, designHard: false, robust: true, skip: {}, whatif: { body: 'Kerbin', n: 3, alt: '2863 km', inc: 0, antennas: [{ id: 'stock:RelayAntenna100', count: 1 }] } },
+      transfer: { from: 'Kerbin', to: 'Duna', park: '100 km', capture: '100 km', years: 4 },
+      network: { horizon: 426 * 21600, stations: {}, custom: [] },
+      reentry: { body: 'Kerbin', mode: 'orbit', pe: 30000, ap: 12000000, vinf: 1000, speed: 2300, angle: 6, ballistic: 400, link: 0, heat: 1 },
+      planner: { horizon: 2, target: 99.5, minSignal: 20, designHard: false, robust: true, skip: {}, targets: {}, limits: { relays: 0, mass: 0, cost: 0 }, whatif: { body: 'Kerbin', n: 3, alt: '2863 km', inc: 0, antennas: [{ id: 'stock:RelayAntenna100', count: 1 }] } },
       saveInfo: null,
       ui: { tab: 'chain' },
     };
@@ -147,6 +150,8 @@
       extraBodies: packs.reduce((q, p) => q.concat(p.bodies), []),
       patches: packs.reduce((q, p) => q.concat(p.patches || []), []),
     });
+    Data.setCalendar(world.calendar.day, world.calendar.daysPerYear);
+    Orb.setCalendar(world.calendar.day, world.calendar.daysPerYear);
   }
   rebuildWorld();
   const enabledBodies = () => world.bodies.filter((b) => !b.star);
@@ -277,6 +282,38 @@
       note.className = 'hint' + (!empty && !(v >= 0) ? ' bad' : '');
       note.textContent = empty ? 'Type a distance (m, km, Mm, Gm, Tm) or pick two bodies.' : v >= 0 ? '= ' + Core.formatDistance(v, 4) : 'Not a valid distance. Try "35 Gm" or "12000 km".';
     }
+    const vesselPanel = h('div', { class: 'bodies', hidden: true });
+    const vesselToggle = h('button', { class: 'btn small ghost', type: 'button', 'aria-expanded': 'false', title: 'Measure the distance and the line of sight between two vessels or stations of your scenario' }, 'Scenario vessels…');
+    vesselToggle.addEventListener('click', () => {
+      vesselPanel.hidden = !vesselPanel.hidden;
+      vesselToggle.setAttribute('aria-expanded', String(!vesselPanel.hidden));
+      if (!vesselPanel.hidden) buildVesselPanel();
+    });
+    function buildVesselPanel() {
+      const Scn = window.KSPScenario;
+      if (!Scn) return;
+      const sim = Scn.getSim();
+      const names = sim.nodes.map((n, i) => ({ i: i, name: n.name }));
+      const mk = (label) => {
+        const s = h('select', { 'aria-label': label }, names.map((n) => h('option', { value: String(n.i), text: n.name })));
+        return s;
+      };
+      const a = mk('First vessel or station'), b = mk('Second vessel or station');
+      if (names.length > 1) b.value = String(names[names.length - 1].i);
+      const res = h('small', { class: 'hint', style: 'display:block;margin-top:6px' });
+      const go = h('button', { class: 'btn small', type: 'button' }, 'Measure');
+      go.addEventListener('click', () => {
+        const i = parseInt(a.value, 10), j = parseInt(b.value, 10);
+        if (!(i >= 0) || !(j >= 0) || i === j) { res.textContent = 'Pick two different vessels.'; return; }
+        const r = sim.sightBetween(i, j, state.scenario.ut, 4 * Data.YEAR, 3000);
+        model.text = Core.formatDistance(r.now, 6); input.value = model.text; updateNote(); onChange();
+        const names2 = Object.keys(r.by).sort((x, y) => r.by[y] - r.by[x]).map((nm) => nm + ' ' + (r.by[nm] * 100).toFixed(1) + '%');
+        res.textContent = 'Distance now ' + Core.formatDistance(r.now, 3) + ' (closest ' + Core.formatDistance(r.min, 3) + ', farthest ' + Core.formatDistance(r.max, 3) + ' over the next 4 years). ' +
+          (r.blocked === 0 ? 'Nothing blocks the straight line between them, vessels hiding behind their own planet included.' : 'The line is blocked ' + (r.blocked * 100).toFixed(1) + '% of the time (' + names2.join(', ') + ').');
+      });
+      vesselPanel.replaceChildren(...[h('div', { class: 'row' }, h('div', { class: 'field' }, h('label', { text: 'From' }), a), h('div', { class: 'field' }, h('label', { text: 'To' }), b), go), res,
+        names.length < 2 ? h('small', { class: 'hint', text: 'Add vessels on the Scenario tab to use this.' }) : null].filter(Boolean));
+    }
     const sight = h('small', { class: 'hint', style: 'display:block;margin-top:6px' });
     function refreshSight() {
       const r = model.from !== model.to ? world.sightReport(model.from, model.to, {
@@ -322,7 +359,7 @@
     );
     refreshChips();
     updateNote();
-    return { el: h('div', {}, h('div', { class: 'dist-row' }, input, toggle, note), sight, panel) };
+    return { el: h('div', {}, h('div', { class: 'dist-row' }, input, toggle, vesselToggle, note), sight, panel, vesselPanel) };
   }
 
   /** Far-end selector shared by the finder and the reach map. model = {farKind, farVessel, farCustom}. */
@@ -358,6 +395,7 @@
       rangeMod: state.settings.rangeMod, dsnPower: dsnPower(), occVac: state.settings.occVac, occAtm: state.settings.occAtm,
       atmosphereBlocks: !!state.settings.atmoBlocks, sunOccludes: state.settings.sunOccludes !== false,
       extraStations: !!state.settings.extraStations, makingHistory: !!state.settings.makingHistory, allowOtherLaunchSites: state.settings.allowOtherLaunchSites !== false,
+      stationOverride: state.network.stations, customStations: state.network.custom,
     };
   }
 
@@ -885,7 +923,7 @@
         losBusy = true; btn.disabled = true;
         const myRev = revision;
         const gen = Pl.reachGen({
-          world: world, lookup: lookup, settings: simSettings(), power: mine, t0: 0, horizon: 426 * 21600, minSignal: 0.05,
+          world: world, lookup: lookup, settings: simSettings(), power: mine, t0: 0, horizon: Data.YEAR, minSignal: 0.05,
         }, enabledBodies().filter((b) => b.id !== r.from).map((b) => b.id));
         (function tick() {
           const stop = Date.now() + 30;
@@ -1145,7 +1183,7 @@
         h('h3', { text: 'Assumptions and limits' }),
         h('ul', {},
           h('li', {}, 'The occlusion test and the radius rule (body radius × the occlusion modifier, no atmosphere height) are ported from the game’s own code. Kerbol blocks signals like every other body (read from the game’s scene data: the Sun carries a CommNet body too), and signals take the path with the best product of link strengths (also read from the game’s code). The Kerbol switch in the game settings is only for what-if runs.'),
-          h('li', {}, 'Orbits are two-body, as in the game (stock KSP has no perturbations). Tick “Follow patched conics” on a vessel to carry it out of a sphere of influence (escape trajectories, transfers); without it a vessel stays on one orbit about its body. Plasma blackout only affects vessels re-entering an atmosphere and is not modelled. Mark an antenna as not extended to leave it out, and pick a Near Future reflector for the antennas that point at one.'),
+          h('li', {}, 'Orbits are two-body, as in the game (stock KSP has no perturbations). Tick “Follow patched conics” on a vessel to carry it out of a sphere of influence (escape trajectories, transfers); without it a vessel stays on one orbit about its body. Add burns to a vessel to plan a transfer (the Launch windows tab finds when). Plasma blackout only affects vessels re-entering an atmosphere, so the orbit simulation ignores it; the Reentry tab covers landings with the game’s own rules. Mark an antenna as not extended to leave it out, and pick a Near Future reflector for the antennas that point at one.'),
           h('li', {}, 'The Antenna finder and the Link & relay chain are range calculators. Under the distance picker they also say how often the line between the two bodies is blocked; a vessel behind its own planet is only shown in the Tracker.'),
           h('li', {}, 'Which side of a tidally locked moon faces its parent, and where the Making History launch-site stations sit, come from the game’s own data files. Bodies from planet packs that don’t state a starting rotation use an approximation.'),
           h('li', {}, 'The distance pickers give the closest and farthest separations two bodies ever reach, a worst/best case rather than today’s distance.'))),
@@ -1153,6 +1191,8 @@
         h('h3', { text: 'Tips' }),
         h('ul', {},
           h('li', {}, 'Type distances with units: 35 Gm, 12000 km, 700 Mm, 1.5e10.'),
+          h('li', {}, 'The Network tab shows who can reach whom over time and which relay everything depends on; the Reentry tab shows where a landing loses signal to plasma; Launch windows finds when to leave for another planet.'),
+          h('li', {}, 'The tracker moves by dragging and zooms by scrolling or pinching; on a keyboard use + − 0 and W A S D.'),
           h('li', {}, 'A “Find antennas” button appears beside any weak hop; it opens the finder with that hop filled in.'),
           h('li', {}, 'Load your persistent.sfs to copy your real difficulty, Tracking Station level, and (on the Scenario tab) your actual vessels with their orbits and antennas.'),
           h('li', {}, 'Using a mod that isn’t listed? Import its part .cfg files on the Antennas tab.'))),

@@ -159,3 +159,106 @@ test('imported bodies join the world and get distances', () => {
   assert.ok(d.min > 3.8e11 && d.max > 4.2e11);
   assert.ok(n.soiRadius > 1e8);
 });
+
+// Trimmed from the style of Real Solar System: replaces Kerbin by Earth, gives the mean anomaly in degrees, patches the Sun and scales a radius.
+const RSS = `
+@Kopernicus:FOR[RealSolarSystem]
+{
+	Body
+	{
+		name = Sun
+		Properties
+		{
+			radius = 696342000
+			gravParameter = 1.3271244004193938e+20
+		}
+	}
+	Body
+	{
+		name = Kerbin
+		cbNameLater = Earth
+		Template
+		{
+			name = Kerbin
+		}
+		Orbit
+		{
+			referenceBody = Sun
+			semiMajorAxis = 149598261150.4425
+			eccentricity = 0.01609636160505683
+			inclination = 23.44603795469773
+			meanAnomalyAtEpochD = 357.0607464120944
+			longitudeOfAscendingNode = 359.9965004168758
+			argumentOfPeriapsis = 102.9720683296131
+		}
+		Properties
+		{
+			radius = 6371000
+			rotationPeriod = 86164.098903691
+			gravParameter = 3.9860043543609598e+14
+		}
+	}
+	Body
+	{
+		name = Mars
+		Template
+		{
+			name = Duna
+		}
+		Orbit
+		{
+			referenceBody = Sun
+			semiMajorAxis = 227939366000
+			eccentricity = 0.0934
+			meanAnomalyAtEpochD = 19.4
+		}
+		Properties
+		{
+			radius = 3389500
+			rotationPeriod = 88642.6848
+			gravParameter = 4.2828375816e13
+		}
+	}
+	@Body[Mars]
+	{
+		@Properties
+		{
+			@radius *= 1.1
+		}
+	}
+	@Body:HAS[@Atmosphere]
+	{
+		%foo = bar
+	}
+}`;
+
+test('a Real Solar System style pack: degrees, Sun patch, relative radius, MM filters ignored', () => {
+  const r = P.parseKopernicus(RSS, stock);
+  assert.equal(r.warnings.length, 0);
+  assert.deepEqual(r.bodies.map((b) => b.id).sort(), ['Kerbin', 'Mars']);
+  const earth = r.bodies.find((b) => b.id === 'Kerbin');
+  assert.equal(earth.name, 'Earth');
+  near(earth.orbit.m0, (357.0607464120944 * Math.PI) / 180);
+  assert.deepEqual(r.patches.map((p) => p.id).sort(), ['Kerbol', 'Mars']);
+  near(r.patches.find((p) => p.id === 'Mars').fields.radiusScale, 1.1);
+  near(r.patches.find((p) => p.id === 'Kerbol').fields.radius, 696342000);
+});
+
+test('a pack that defines its own Kerbin replaces the stock system and switches the calendar to Earth time', () => {
+  const r = P.parseKopernicus(RSS, stock);
+  const w = createWorld({ extraBodies: r.bodies, patches: r.patches });
+  assert.deepEqual(w.bodies.map((b) => b.id).sort(), ['Kerbin', 'Kerbol', 'Mars'].sort());
+  near(w.index.get('Kerbin').radius, 6371000);
+  near(w.index.get('Mars').radius, 3389500 * 1.1);
+  near(w.index.get('Kerbol').radius, 696342000);
+  assert.deepEqual(w.calendar, { day: 86400, daysPerYear: 365 });
+  // stock keeps the stock calendar
+  assert.deepEqual(createWorld({}).calendar, { day: 21600, daysPerYear: 426 });
+});
+
+test('a pack body with a stock id but no Kerbin only replaces that body', () => {
+  const r = P.parseKopernicus(RSS.replace(/name = Kerbin/, 'name = Duna').replace('cbNameLater = Earth', ''), stock);
+  const w = createWorld({ extraBodies: r.bodies.filter((b) => b.id === 'Duna'), patches: [] });
+  assert.ok(w.index.has('Mun') && w.index.has('Eve'));
+  near(w.index.get('Duna').radius, 6371000);
+});

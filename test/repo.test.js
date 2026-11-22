@@ -102,3 +102,32 @@ test('every relative link and image in the README and the guides resolves, and e
     assert.ok(used.has(path.join(docsDir, 'img', f)), 'docs/img/' + f + ' is not used by any page');
   }
 });
+
+test('offline support: the service worker caches exactly the files index.html loads, with the release version', () => {
+  const sw = read('sw.js');
+  assert.equal(/const VERSION = '([^']+)'/.exec(sw)[1], JSON.parse(read('package.json')).version);
+  const listed = new Set(/const FILES = \[([\s\S]*?)\];/.exec(sw)[1].match(/'[^']+'/g).map((s) => s.slice(1, -1)));
+  const html = read('index.html');
+  const used = [...html.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]).concat([...html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)].map((m) => m[1]));
+  for (const f of used) assert.ok(listed.has(f), 'sw.js does not cache ' + f);
+  for (const f of listed) if (f !== './') assert.ok(fs.existsSync(path.join(root, f)), 'sw.js lists a missing file ' + f);
+  const manifest = JSON.parse(read('manifest.webmanifest'));
+  assert.ok(listed.has(manifest.icons[0].src));
+  assert.match(html, /rel="manifest" href="manifest\.webmanifest"/);
+  // the Pages and release packages carry the files the offline cache needs
+  for (const wf of ['pages.yml', 'release.yml']) {
+    const y = read('.github/workflows/' + wf);
+    for (const f of ['sw.js', 'manifest.webmanifest', 'icon.svg']) assert.ok(y.includes(f), wf + ' leaves out ' + f);
+  }
+});
+
+test('the page ships a Content-Security-Policy that forbids network access and inline scripts', () => {
+  const m = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(read('index.html'));
+  assert.ok(m, 'CSP meta tag');
+  const csp = m[1];
+  assert.match(csp, /default-src 'none'/);
+  assert.match(csp, /connect-src 'none'/);
+  assert.match(csp, /script-src 'self'(;|$)/);
+  assert.doesNotMatch(csp, /script-src[^;]*unsafe/);
+  assert.doesNotMatch(read('index.html'), /<script(?![^>]*\bsrc=)[^>]*>\s*\S/i, 'no inline scripts');
+});

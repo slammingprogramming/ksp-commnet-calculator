@@ -1,6 +1,6 @@
 {
   "name": "ksp-commnet-workbench",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Kerbal Space Program CommNet workbench: signal strength, relay chains, orbit tracking, occlusion analysis and relay planning.",
   "private": true,
   "author": "slammingprogramming",

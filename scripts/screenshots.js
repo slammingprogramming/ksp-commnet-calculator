@@ -156,6 +156,43 @@ async function main() {
       await page.waitForTimeout(500);
       await shot('#tab-tracker', 'tracker-escape');
     }
+
+    if (want('newtabs')) {
+      // the network planner, reentry, launch windows and the light theme, from a fresh profile with the far-side Mun lander loaded
+      await page.evaluate(() => localStorage.clear());
+      await page.reload();
+      await page.waitForSelector('#tabs button');
+      await tab('scenario');
+      await page.selectOption('select[aria-label="Load an example"]', '1');
+      await page.waitForSelector('#tab-scenario .scn-list > *');
+
+      await tab('network');
+      await page.click('#tab-network button:has-text("Analyze the network")');
+      await page.waitForSelector('#tab-network table th:has-text("DSN")', { timeout: 60000 });
+      await page.click('#tab-network button:has-text("Compare station sets")');
+      await page.waitForSelector('#tab-network >> text=Kerbal Space Center only', { timeout: 60000 });
+      await page.waitForTimeout(400);
+      await shot('#tab-network', 'network');
+
+      await tab('reentry');
+      await page.waitForSelector('#tab-reentry >> text=Blackout:', { timeout: 30000 });
+      await page.click('#tab-reentry button:has-text("Find the blackout-free speed")');
+      await page.waitForSelector('#tab-reentry >> text=No total blackout', { timeout: 60000 });
+      await page.waitForTimeout(400);
+      await shot('#tab-reentry', 'reentry');
+
+      await tab('transfer');
+      await page.click('#tab-transfer button:has-text("Find launch windows")');
+      await page.waitForSelector('#tab-transfer table tbody tr', { timeout: 30000 });
+      await shot('#tab-transfer', 'transfer');
+
+      await page.emulateMedia({ colorScheme: 'light' });
+      await tab('tracker');
+      await focusOn('Mun');
+      await page.waitForTimeout(600);
+      await shot('#tab-tracker', 'tracker-light');
+      await page.emulateMedia({ colorScheme: 'dark' });
+    }
   } finally {
     await browser.close();
     server.kill();

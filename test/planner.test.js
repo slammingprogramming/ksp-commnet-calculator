@@ -128,3 +128,30 @@ test('evaluateGen reports per-vessel uptime and causes for a what-if node set', 
   const fixed = Pl.runSync(Pl.evaluateGen({ world, lookup, settings, nodes: [probe].concat(ring), t0: 0, horizon: 4 * Data.DAY, minSignal: 0.1 }));
   assert.ok(fixed.worst > 0.9, 'with relays ' + fixed.worst);
 });
+
+test('budget: a relay cap drops the least valuable fixes and reports it; per-vessel targets are checked', () => {
+  const world = createWorld({});
+  const lookup = (id) => Data.antennas.find((a) => a.id === id);
+  const node = { id: 'l', name: 'Far-side lander', tracked: true, loc: { type: 'landed', body: 'Mun', lat: 10, lon: 227.436, alt: 0 }, antennas: [{ id: 'stock:HighGainAntenna', count: 1 }] };
+  const base = { world, lookup, settings: { dsnPower: 50e9, occVac: 0.9, occAtm: 0.75 }, nodes: [node], t0: 0, horizon: 20 * Data.DAY, target: 0.99, robust: false };
+  const full = Pl.runSync(Pl.planGen(Object.assign({}, base, { targets: { 'Far-side lander': 0.5 } })));
+  const nFull = full.planned.length;
+  assert.ok(nFull >= 3);
+  assert.equal(full.budget, null);
+  assert.equal(full.targets.length, 1);
+  const capped = Pl.runSync(Pl.planGen(Object.assign({}, base, { limits: { maxRelays: nFull - 1 } })));
+  assert.ok(capped.planned.length <= nFull - 1);
+  assert.ok(capped.budget && capped.budget.dropped.length >= 1 && capped.budget.satisfied);
+  const none = Pl.runSync(Pl.planGen(Object.assign({}, base, { limits: { maxRelays: 1 } })));
+  assert.ok(none.planned.length <= 1 && none.budget.satisfied);
+});
+
+test('ringNodes can build elliptical relay orbits: periapsis at the low altitude, apoapsis at the high one', () => {
+  const mun = world.index.get('Mun');
+  const nodes = Pl.ringNodes(world, 'Mun', 2, 100e3, 90, 0, 0, [{ id: 'stock:RelayAntenna50', count: 1 }], 'ring:Mun', 'Mun relay', 400e3);
+  assert.equal(nodes.length, 2);
+  const o = nodes[0].loc.orbit;
+  assert.ok(o.e > 0.2, 'eccentric ' + o.e);
+  assert.ok(Math.abs(o.a * (1 - o.e) - (mun.radius + 100e3)) < 1);
+  assert.ok(Math.abs(o.a * (1 + o.e) - (mun.radius + 400e3)) < 1);
+});

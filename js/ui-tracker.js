@@ -5,17 +5,23 @@
 
   const App = window.KSPApp;
   const Core = window.KSPCore;
+  const Data = window.KSPData;
   const Orb = window.KSPOrbits;
   const Sim = window.KSPSim;
   const Pl = window.KSPPlanner;
   const Scn = window.KSPScenario;
   const h = App.h;
 
-  const SPEEDS = [
-    ['1 min / s', 60], ['10 min / s', 600], ['1 hour / s', 3600], ['1 day / s', 21600],
-    ['4 days / s', 86400], ['20 days / s', 432000], ['100 days / s', 2160000], ['1 year / s', 9201600],
-  ];
-  const HORIZONS = [['1 month', 30 * 21600], ['3 months', 106 * 21600], ['1 year', 426 * 21600], ['2 years', 852 * 21600], ['4 years', 1704 * 21600], ['8 years', 3408 * 21600]];
+  // Functions, so they follow the calendar (stock 6-hour days, or an Earth pack's 24-hour days)
+  const speeds = () => {
+    const D = Data.DAY;
+    return [['1 min / s', 60], ['10 min / s', 600], ['1 hour / s', 3600], ['1 day / s', D], ['4 days / s', 4 * D], ['20 days / s', 20 * D], ['100 days / s', 100 * D], ['1 year / s', Data.YEAR]];
+  };
+  const horizons = () => {
+    const D = Data.DAY, Y = Data.YEAR;
+    return [['1 month', 30 * D], ['3 months', Math.floor(Y / (4 * D)) * D], ['1 year', Y], ['2 years', 2 * Y], ['4 years', 4 * Y], ['8 years', 8 * Y]];
+  };
+  let SPEEDS = speeds(), HORIZONS = horizons();
 
   const cssVar = (name, fallback) => (getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback);
 
@@ -29,16 +35,18 @@
   }
 
   function build(root) {
+    SPEEDS = speeds(); HORIZONS = horizons();
     const st = App.state;
     const sc = st.scenario;
     const tr = st.tracker;
     let analysis = null; // {rev, result, ...}
     let job = null, timer = null, playing = false, lastTick = 0;
     let viewR = null;
+    let panX = 0, panY = 0; // view offset from the focus body, in metres (screen axes)
 
     /* ---------- layout ---------- */
     const canvas = h('canvas', { class: 'tracker-canvas', role: 'img', tabindex: '0', 'aria-label': 'Orbit view of the tracked vessels and links', 'aria-describedby': 'tracker-keys' });
-    const keysHint = h('small', { class: 'hint', id: 'tracker-keys', text: 'Keyboard (click the view first): + and − zoom, 0 fits, V switches top-down / edge-on, ← → step one hour (Shift: one day), Space plays or pauses.' });
+    const keysHint = h('small', { class: 'hint', id: 'tracker-keys', text: 'Mouse or touch: drag to move the view, scroll or pinch to zoom. Keyboard (click the view first): + and − zoom, W A S D move, 0 fits, V switches top-down / edge-on, ← → step one hour (Shift: one day), Space plays or pauses.' });
     const legend = h('div', { class: 'legend', style: 'margin-top:6px' });
     const statusBox = h('div', { class: 'card' });
     const analysisBox = h('div', { class: 'card', 'aria-live': 'polite' });
@@ -46,7 +54,7 @@
 
     const utIn = h('input', { type: 'text', size: 18, spellcheck: 'false', 'aria-label': 'Simulation time' });
     const dateLbl = h('small', { class: 'hint' });
-    const focusSel = App.bodySelect(tr.focus, (v) => { tr.focus = v; viewR = null; App.saveState(); draw(); }, { withStar: true });
+    const focusSel = App.bodySelect(tr.focus, (v) => { tr.focus = v; viewR = null; panX = panY = 0; App.saveState(); draw(); }, { withStar: true });
     const speedSel = h('select', { 'aria-label': 'Playback speed' }, SPEEDS.map((s) => h('option', { value: String(s[1]), text: s[0] })));
     speedSel.value = String(tr.speed);
     speedSel.addEventListener('change', () => { tr.speed = parseFloat(speedSel.value); App.saveState(); });
@@ -88,14 +96,55 @@
       const k = e.key;
       if (k === '+' || k === '=') viewR = (viewR || autoView(App.world, tr.focus)) / 1.4;
       else if (k === '-' || k === '_') viewR = (viewR || autoView(App.world, tr.focus)) * 1.4;
-      else if (k === '0') viewR = null;
+      else if (k === '0') { viewR = null; panX = panY = 0; }
+      else if (k === 'w' || k === 'W' || k === 'a' || k === 'A' || k === 's' || k === 'S' || k === 'd' || k === 'D') {
+        // pan by a fifth of the view: W/S up and down, A/D left and right
+        const step = 0.2 * (viewR || autoView(App.world, tr.focus));
+        const kk = k.toLowerCase();
+        if (kk === 'a') panX -= step; else if (kk === 'd') panX += step; else if (kk === 'w') panY += step; else panY -= step;
+      }
       else if (k === 'v' || k === 'V') { tr.view = tr.view === 'side' ? 'top' : 'side'; viewSel.value = tr.view; App.saveState(); }
-      else if (k === 'ArrowRight' || k === 'ArrowLeft') { setUT(sc.ut + (k === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 21600 : 3600)); e.preventDefault(); return; }
+      else if (k === 'ArrowRight' || k === 'ArrowLeft') { setUT(sc.ut + (k === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? Data.DAY : 3600)); e.preventDefault(); return; }
       else if (k === ' ') { if (playing) stopPlay(); else startPlay(); }
       else return;
       e.preventDefault();
       draw();
     });
+
+    // drag to pan, wheel or two-finger pinch to zoom
+    const pointers = new Map();
+    let pinch = 0;
+    const pxScale = () => (Math.min(canvas.clientWidth, canvas.clientHeight) / 2 - 14) / (viewR || autoView(App.world, tr.focus));
+    canvas.addEventListener('pointerdown', (e) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+      pinch = 0;
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      const p = pointers.get(e.pointerId);
+      if (!p) return;
+      const dx = e.clientX - p.x, dy = e.clientY - p.y;
+      p.x = e.clientX; p.y = e.clientY;
+      if (viewR === null) viewR = autoView(App.world, tr.focus);
+      if (pointers.size === 1) {
+        const s = pxScale();
+        panX -= dx / s; panY += dy / s;
+      } else if (pointers.size === 2) {
+        const [a, b] = Array.from(pointers.values());
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinch > 0 && d > 0) viewR = Math.min(1e13, Math.max(1e3, (viewR * pinch) / d));
+        pinch = d;
+      }
+      draw();
+    });
+    const endPointer = (e) => { pointers.delete(e.pointerId); pinch = 0; };
+    canvas.addEventListener('pointerup', endPointer);
+    canvas.addEventListener('pointercancel', endPointer);
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      viewR = Math.min(1e13, Math.max(1e3, (viewR || autoView(App.world, tr.focus)) * (e.deltaY > 0 ? 1.2 : 1 / 1.2)));
+      draw();
+    }, { passive: false });
 
     const stepBtn = (label, sec) => h('button', { class: 'btn small', type: 'button', onclick: () => setUT(sc.ut + sec) }, label);
 
@@ -107,10 +156,10 @@
         h('div', { class: 'field' }, h('label', { text: 'View centred on' }), focusSel),
         h('div', { class: 'field' }, h('label', { text: 'Projection' }), viewSel)),
       h('div', { class: 'seg', style: 'margin-top:8px' },
-        stepBtn('−1 day', -21600), stepBtn('−1 h', -3600), stepBtn('+1 h', 3600), stepBtn('+1 day', 21600), stepBtn('+10 days', 216000),
+        stepBtn('−1 day', -Data.DAY), stepBtn('−1 h', -3600), stepBtn('+1 h', 3600), stepBtn('+1 day', Data.DAY), stepBtn('+10 days', 10 * Data.DAY),
         h('button', { class: 'btn small', type: 'button', onclick: () => { viewR = viewR ? viewR / 1.6 : autoView(App.world, tr.focus) / 1.6; draw(); } }, 'Zoom +'),
         h('button', { class: 'btn small', type: 'button', onclick: () => { viewR = (viewR || autoView(App.world, tr.focus)) * 1.6; draw(); } }, 'Zoom −'),
-        h('button', { class: 'btn small', type: 'button', onclick: () => { viewR = null; draw(); } }, 'Fit')),
+        h('button', { class: 'btn small', type: 'button', onclick: () => { viewR = null; panX = panY = 0; draw(); } }, 'Fit')),
       h('div', { style: 'margin-top:6px' }, dateLbl));
 
     root.append(h('div', { class: 'two-col' },
@@ -147,7 +196,7 @@
       const snap = sim.snapshot(sc.ut);
       const bp = snap.bodyPos;
       const AX = tr.view === 'side' ? 2 : 1; // second screen axis: y (top-down) or z (edge-on)
-      const cx0 = bp[focus.idx * 3], cy0 = bp[focus.idx * 3 + AX];
+      const cx0 = bp[focus.idx * 3] + panX, cy0 = bp[focus.idx * 3 + AX] + panY;
       const scale = (Math.min(W, H) / 2 - 14) / viewR;
       const px = (x) => W / 2 + (x - cx0) * scale;
       const py = (y) => H / 2 - (y - cy0) * scale;
@@ -343,7 +392,8 @@
     function renderAnalysis() {
       const sim = Scn.getSim();
       const horizonSel = h('select', { 'aria-label': 'Analysis length' }, HORIZONS.map((x) => h('option', { value: String(x[1]), text: x[0] })));
-      horizonSel.value = String(HORIZONS.some((x) => x[1] === tr.horizon) ? tr.horizon : 426 * 21600);
+      if (!HORIZONS.some((x) => x[1] === tr.horizon)) tr.horizon = Data.YEAR;
+      horizonSel.value = String(tr.horizon);
       const go = h('button', { class: 'btn primary', type: 'button' }, 'Analyze blackouts');
       const bar = h('div', { class: 'meter', hidden: true }, h('i', { style: 'width:0%;background:var(--accent)' }));
       go.addEventListener('click', () => {

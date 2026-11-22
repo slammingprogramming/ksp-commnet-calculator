@@ -68,6 +68,14 @@ existing bodies are applied. The app reports what it found and what it could not
 for a pack's bodies are only as exact as the pack states them; where a pack gives no starting rotation, an
 approximation is used.
 
+Bodies the pack **redefines** (same name as a stock body) replace the stock ones. A pack that defines its own Kerbin, such
+as **Real Solar System**, replaces the whole stock system: the stock bodies it does not redefine are dropped, the star
+is patched, degree-valued mean anomalies (`meanAnomalyAtEpochD`) and relative edits such as `@radius *= 1.02` (oblate
+planets) are applied, and the calendar switches to Earth time (24-hour days, 365-day years) so that "1 year" means a
+real year. Menu-manager filters (`@Body:HAS[…]`) are ignored. The app has been run against the real Real Solar System
+configs: all bodies import and the planner, tracker and network tabs work on an Earth-sized system, including the
+keostationary relay height.
+
 ### Near Future reflectors
 
 With the Near Future Exploration pack on, an antenna entry that has a feed gets a **reflector** picker. Choose the

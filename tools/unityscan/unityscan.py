@@ -247,6 +247,49 @@ def _home_fields(d, off, le):
     return {'nodeName': node, 'isKSC': bool(ksc), 'isPermanent': bool(perm), 'antennaPower': power}
 
 
+def _float_curves(seg):
+    """FloatCurves (Unity AnimationCurve: int count, then count x 7 floats [time, value, inSlope, outSlope, weightedMode (int), inWeight, outWeight])
+    found by their shape in a prefab's raw bytes: (offset of the count, [(time, value, inSlope, outSlope), ...])."""
+    out, q = [], 0
+    while q < len(seg) - 32:
+        n = struct.unpack_from('<i', seg, q)[0]
+        if 1 <= n <= 60 and q + 4 + 28 * n + 12 <= len(seg):
+            keys, ok, last = [], True, None
+            for k in range(n):
+                t, v, a, b, _wm, wi, wo = struct.unpack_from('<fffffff', seg, q + 4 + 28 * k)
+                mode = struct.unpack_from('<i', seg, q + 4 + 28 * k + 16)[0]
+                if (last is not None and not t > last) or mode != 0 or abs(wi - 1 / 3) > 1e-3 or abs(wo - 1 / 3) > 1e-3 or abs(t) > 1e8 or abs(v) > 1e8:
+                    ok = False; break
+                last = t; keys.append((t, v, a, b))
+            if ok:
+                out.append((q, keys)); q += 4 + 28 * n; continue
+        q += 4
+    return out
+
+
+def atmospheres(scene):
+    """Atmosphere data of every body that has one: the temperature and pressure curves, molar mass, adiabatic index, shock
+    temperature multiplier. The first curve in the atmosphere block is atmosphereTemperatureCurve and the last one
+    atmospherePressureCurve (both in metres); the scalars sit directly before the first curve and the multipliers before the last."""
+    res = {}
+    for name, r, cls, go, gp, off, end, pid in scene.behaviours({'CelestialBody'}):
+        seg = r['data'][off:end]
+        cs = _float_curves(seg)
+        if len(cs) < 8 or cs[0][1][0][1] < 100 or cs[-1][1][0][1] < 1:   # first key: sea-level temperature (K) / pressure (kPa)
+            continue
+        (q0, temp), (q1, pres) = cs[0], cs[-1]
+        d = lambda p: struct.unpack_from('<d', seg, p)[0]
+        res[go] = {
+            'depth': d(q0 - 8 - 56),                    # atmosphereDepth, seaLevelT, seaLevelP, molarMass, adiabaticIndex, lapse, gasMassLapse (7 doubles)
+            'seaLevelTemperature': d(q0 - 8 - 48), 'seaLevelPressure': d(q0 - 8 - 40),
+            'molarMass': d(q0 - 8 - 32), 'adiabaticIndex': d(q0 - 8 - 24),
+            'shockTemperatureMultiplier': d(q1 - 8 - 16),   # ..., emissivity, coreTemperatureOffset, convectionMultiplier, shockTemperatureMultiplier, bodyTemperature
+            'temperatureCurve': [[round(x, 6) for x in k] for k in temp],
+            'pressureCurve': [[round(x, 6) for x in k] for k in pres],
+        }
+    return res
+
+
 def main(ksp, out_json=None):
     data_dir = os.path.join(ksp, 'KSP_x64_Data')
     files = _plain_files(data_dir)
@@ -302,6 +345,10 @@ def main(ksp, out_json=None):
             rec['orbit'] = {k: dbl(o + off_) for k, off_ in (('inclination', 0), ('eccentricity', 8), ('semiMajorAxis', 16), ('LAN', 24),
                                                           ('argumentOfPeriapsis', 32), ('epoch', 40), ('meanAnomalyAtEpoch', 268))}
         print('  %-8s %s' % (go, rec)); facts['bodies'][go] = rec
+    print(chr(10) + '== Atmospheres (temperature and pressure curves, gas properties, shock-temperature multiplier)')
+    facts['atmospheres'] = atmospheres(scene)
+    for k, v in facts['atmospheres'].items():
+        print('  %-8s depth %.0f m  M %.4f  gamma %.2f  shock x%.2f  T0 %.1f K  P0 %.3f kPa  (%d + %d keys)' % (k, v['depth'], v['molarMass'], v['adiabaticIndex'], v['shockTemperatureMultiplier'], v['temperatureCurve'][0][1], v['pressureCurve'][0][1], len(v['temperatureCurve']), len(v['pressureCurve'])))
     if out_json:
         json.dump(facts, open(out_json, 'w'), indent=1); print('\nwrote', out_json)
 

@@ -13,8 +13,11 @@
 
   const DEG = Math.PI / 180;
   const TAU = 2 * Math.PI;
-  const DAY = 21600;
-  const YEAR = 426 * DAY;
+  // Calendar: stock KSP is 6-hour days and 426-day years; a pack that replaces Kerbin by Earth switches it (setCalendar).
+  const calendar = { day: 21600, daysPerYear: 426, year: 426 * 21600 };
+  function setCalendar(day, daysPerYear) {
+    calendar.day = day; calendar.daysPerYear = daysPerYear; calendar.year = day * daysPerYear;
+  }
 
   /** Solve Kepler's equation M = E - e sin E for E (elliptical orbits). */
   function solveKepler(M, e) {
@@ -189,10 +192,10 @@
     if (!isFinite(ut)) return '–';
     const neg = ut < 0;
     let s = Math.abs(Math.round(ut));
-    const year = Math.floor(s / YEAR) + 1;
-    s -= (year - 1) * YEAR;
-    const day = Math.floor(s / DAY) + 1;
-    s -= (day - 1) * DAY;
+    const year = Math.floor(s / calendar.year) + 1;
+    s -= (year - 1) * calendar.year;
+    const day = Math.floor(s / calendar.day) + 1;
+    s -= (day - 1) * calendar.day;
     const hh = Math.floor(s / 3600);
     s -= hh * 3600;
     const mm = Math.floor(s / 60);
@@ -205,8 +208,8 @@
     if (!isFinite(sec)) return '–';
     let s = Math.round(Math.abs(sec));
     if (s < 60) return s + 's';
-    const y = Math.floor(s / YEAR); s -= y * YEAR;
-    const d = Math.floor(s / DAY); s -= d * DAY;
+    const y = Math.floor(s / calendar.year); s -= y * calendar.year;
+    const d = Math.floor(s / calendar.day); s -= d * calendar.day;
     const h = Math.floor(s / 3600); s -= h * 3600;
     const m = Math.floor(s / 60); s -= m * 60;
     const parts = [];
@@ -226,12 +229,13 @@
     if (!m || (m[1] === undefined && m[2] === undefined && m[3] === undefined)) return NaN;
     const y = m[1] ? parseInt(m[1], 10) : 1;
     const d = m[2] ? parseInt(m[2], 10) : 1;
-    if (y < 1 || d < 1 || d > 426) return NaN;
-    return (y - 1) * YEAR + (d - 1) * DAY + (m[3] ? parseInt(m[3], 10) * 3600 + parseInt(m[4], 10) * 60 + (m[5] ? parseInt(m[5], 10) : 0) : 0);
+    if (y < 1 || d < 1 || d > calendar.daysPerYear) return NaN;
+    return (y - 1) * calendar.year + (d - 1) * calendar.day + (m[3] ? parseInt(m[3], 10) * 3600 + parseInt(m[4], 10) * 60 + (m[5] ? parseInt(m[5], 10) : 0) : 0);
   }
 
   return {
-    DEG: DEG, TAU: TAU, DAY: DAY, YEAR: YEAR,
+    DEG: DEG, TAU: TAU, calendar: calendar, setCalendar: setCalendar,
+    get DAY() { return calendar.day; }, get YEAR() { return calendar.year; },
     solveKepler: solveKepler,
     prepare: prepare,
     position: position,

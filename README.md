@@ -25,7 +25,10 @@ account, nothing leaves your browser.
 | **Reach map** | See the signal at every body, with an optional line-of-sight simulation for landers. |
 | **Scenario** | Define the vessels, bases and relays to follow; import your real fleet from a save. |
 | **Tracker** | Watch bodies, orbits, links and blocking spheres move, and list every blackout with its start, duration and cause. |
-| **Relay planner** | Diagnose *why* a vessel loses contact and design, check and stress-test the relays that fix it. |
+| **Relay planner** | Diagnose *why* a vessel loses contact and design, check and stress-test the relays that fix it, within a budget if you like. |
+| **Network** | See who can reach whom over time, find the relays everything depends on, and compare ground-station sets (including the Making History ones). |
+| **Reentry** | Find when and where a landing loses signal to plasma, and the speed you can come in at without losing it. |
+| **Launch windows** | Find when to leave for another planet or moon, and how much speed it takes. |
 | **Antennas & mods** | Toggle antenna packs, add your own, import a mod's part `.cfg` files or a Kopernicus planet pack. |
 
 Each tab has a guide with screenshots in the **[documentation](docs/README.md)**; start with
@@ -45,6 +48,7 @@ Each tab has a guide with screenshots in the **[documentation](docs/README.md)**
 | [Calculators](docs/calculators.md) | chain, finder and reach map |
 | [Scenarios](docs/scenario.md) | vessels, saves, patched conics, export and share links |
 | [Tracker](docs/tracker.md) · [Relay planner](docs/planner.md) | blackouts and how the fixes are designed |
+| [Network](docs/network.md) · [Reentry](docs/reentry.md) · [Launch windows](docs/launch-windows.md) | whole-network planning, plasma blackout on landings, transfers and burns |
 | [Game settings and mods](docs/settings-and-mods.md) | difficulty, antenna packs, mod and planet-pack import |
 | [How the model works](docs/model.md) · [Research notes](docs/RESEARCH.md) | the maths, the game rules, sources and verification |
 | [FAQ](docs/faq.md) · [Development](docs/development.md) | troubleshooting; commands, layout and conventions |
@@ -67,10 +71,13 @@ data, are in [How the model works](docs/model.md).
 * The occlusion test (Kerbol included), path choice, antenna-combining rules, ground-station rules and every stock
   body's data were **read from the game's own code and files** (`tools/ildump`, `tools/unityscan`). Stock and Breaking
   Ground antennas come from the 1.12.5 part configs; mod antennas from each mod's configs, re-checked by script monthly.
-* Orbits are two-body, as in the game, with opt-in **patched conics** for escape trajectories and transfers. Near Future
-  reflectors and retracted antennas are modelled.
-* Not modelled: plasma blackout (a re-entry transient), orbital perturbations (the game has none), manoeuvres, other
-  mods' signal multipliers. See [what is and is not modelled](docs/model.md#accuracy-and-limits).
+* Orbits are two-body, as in the game, with opt-in **patched conics** for escape trajectories and transfers, and
+  impulsive burns. Near Future reflectors and retracted antennas are modelled. **Plasma blackout** is modelled for
+  atmospheric entries with the game's own rules.
+* Not modelled: orbital perturbations (the game has none), powered flight and fuel, other mods' signal multipliers.
+  See [what is and is not modelled](docs/model.md#accuracy-and-limits).
+* Works offline once opened (it installs like an app from the Pages site), asks the browser to refuse any network
+  request, and has been run against the Real Solar System planet configs.
 
 ## Development
 

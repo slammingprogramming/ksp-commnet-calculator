@@ -64,11 +64,15 @@ straight line enters a sphere. The test is a port of the game's `OccluderHorizon
   axial tilt). Stock KSP has no orbital perturbations, so this is the game's own model.
 * Kerbin's rotation moves the ground stations; every stock body's starting spin phase is the game's `initialRotation`,
   so which side of Mun, Minmus, Ike and the other locked moons faces its parent is exact.
-* The calendar is KSP's: 6-hour days, 426-day years.
+* The calendar is KSP's: 6-hour days, 426-day years. A planet pack that replaces Kerbin by Earth (Real Solar System)
+  switches it to 24-hour days and 365-day years.
 * **Patched conics (opt-in per vessel).** A vessel set to *follow patched conics* is carried out of a sphere of
   influence when it reaches the edge, and onto the new body's orbit, up to 8 legs and 25 years ahead. Escape (hyperbolic)
-  orbits imported from a save always do. There are no burns: it shows where the vessel goes if it does nothing more.
-  A vessel without the option stays on one orbit about its body.
+  orbits imported from a save always do. Planned impulsive burns (see [Launch windows and manoeuvres](launch-windows.md))
+  are applied first, then the vessel follows the conic they leave it on. A vessel without the option stays on one orbit
+  about its body.
+* **Plasma blackout** during atmospheric entry is modelled on its own tab ([Reentry](reentry.md)) with the game's exact
+  rules; it is not part of the orbit and relay simulation, where it never applies.
 
 ## Antenna options
 
@@ -89,9 +93,9 @@ orbit and spin phase. Nothing the model relies on is a guess for stock KSP.
 
 | Not modelled | Reason |
 |---|---|
-| Plasma blackout | In the game it is a transient on loaded vessels re-entering an atmosphere. It never affects an orbiting or landed vessel, so it has no place in link planning. |
+| Plasma blackout in the relay simulation | In the game it is a transient on loaded vessels re-entering an atmosphere. It never affects an orbiting or landed vessel, so the simulation ignores it. The Reentry tab covers it for landings. |
 | Orbital perturbations | Stock KSP has none (patched conics). |
-| Manoeuvres | The patched conics follow a fixed orbit; there are no manoeuvre nodes. |
+| Powered flight | Burns are impulsive and instantaneous; there is no fuel, staging, gravity-loss or steering model, and no automatic targeting of an encounter. |
 | Other mods' signal multipliers, `ModuleRelayEnabler`, science bonuses | No verified data to model. |
 
 **Things to keep in mind:**

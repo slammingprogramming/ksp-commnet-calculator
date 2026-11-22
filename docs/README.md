@@ -12,7 +12,10 @@ orbits in time, see when and why a link is blocked, and design relays that fix t
 | [Calculators](calculators.md) | use the Link & relay chain, Antenna finder and Reach map |
 | [Scenarios](scenario.md) | put vessels, bases and relays on a timeline; import a save; patched conics; export and share links |
 | [Tracker](tracker.md) | watch orbits and links move and list every future blackout with its cause |
-| [Relay planner](planner.md) | have the fixes designed, checked and stress-tested for you |
+| [Relay planner](planner.md) | have the fixes designed, checked and stress-tested for you, within a budget if you like |
+| [Network planner](network.md) | see who can reach whom over time, find single points of failure, compare ground-station sets (Making History included) |
+| [Reentry and plasma blackout](reentry.md) | find when and where a landing loses signal, and how fast you can come in without losing it |
+| [Launch windows and manoeuvres](launch-windows.md) | find when to leave for another planet or moon and put the burn on a vessel |
 | [Game settings and mods](settings-and-mods.md) | set difficulty and the Tracking Station, enable antenna packs, import mod antennas and planet packs |
 | [FAQ and troubleshooting](faq.md) | fix "the calculator says it works but the game disagrees" and similar |
 

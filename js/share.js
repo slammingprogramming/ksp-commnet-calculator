@@ -59,6 +59,10 @@
         i: num(loc.i, -180, 180, 0), lan: num(loc.lan, -720, 720, 0), w: num(loc.w, -720, 720, 0), phase: num(loc.phase, -720, 720, 0),
       };
       if (loc.patched === true) out.patched = true;
+      if (Array.isArray(loc.burns)) {
+        const burns = loc.burns.slice(0, 12).map((b) => (b && typeof b === 'object' ? { t: num(b.t, -1e13, 1e13, NaN), prograde: num(b.prograde, -1e5, 1e5, 0), normal: num(b.normal, -1e5, 1e5, 0), radial: num(b.radial, -1e5, 1e5, 0) } : null)).filter((b) => b && isFinite(b.t));
+        if (burns.length) out.burns = burns;
+      }
       const el = loc.elements;
       if (el && typeof el === 'object') {
         const a = num(el.a, -1e15, 1e15, NaN), e = num(el.e, 0, 50, NaN);

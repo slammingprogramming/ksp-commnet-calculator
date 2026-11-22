@@ -102,3 +102,10 @@ test('escape-orbit elements and the patched-conics flag round-trip; inconsistent
   assert.equal(rb.scenario.nodes[0].loc.elements, undefined);
   assert.ok(rb.warnings.some((w) => /elements/.test(w)));
 });
+
+test('burns round-trip and are validated', () => {
+  const sc = { ut: 0, nodes: [{ id: 'x', name: 'Transfer', tracked: true, loc: { type: 'orbit', body: 'Kerbin', pe: 100000, ap: 100000, i: 0, lan: 0, w: 0, phase: 0, burns: [{ t: 5000, prograde: 900, normal: 0, radial: 0 }, { t: 'x' }] }, antennas: [] }] };
+  const r = Share.parseScenario(JSON.stringify(Share.exportScenario(sc, {}, '1.1.1')));
+  assert.ok(!r.error, r.error);
+  assert.deepEqual(r.scenario.nodes[0].loc.burns, [{ t: 5000, prograde: 900, normal: 0, radial: 0 }]);
+});

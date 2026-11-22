@@ -64,17 +64,29 @@
     const kerbin = world.index.get('Kerbin');
     if (kerbin) {
       for (const s of world.stations) {
-        if (s.dlc && !st.makingHistory) continue;
-        // Game rule (CommNetHome.CreateNode): extra stations off -> only KSC (plus permanent launch-site stations if
-        // other launch sites are allowed); on -> all stations. Permanent ones keep a small fixed antenna.
-        if (s.kind === 'anomaly' && !st.extraStations) continue;
-        if (s.kind === 'permanent' && !(st.extraStations || st.allowOtherLaunchSites)) continue;
+        // Per-station override (network planning what-ifs): true forces a station on, false off.
+        const ov = st.stationOverride ? st.stationOverride[s.id] : undefined;
+        if (ov === false) continue;
+        if (ov !== true) {
+          if (s.dlc && !st.makingHistory) continue;
+          // Game rule (CommNetHome.CreateNode): extra stations off -> only KSC (plus permanent launch-site stations if
+          // other launch sites are allowed); on -> all stations. Permanent ones keep a small fixed antenna.
+          if (s.kind === 'anomaly' && !st.extraStations) continue;
+          if (s.kind === 'permanent' && !(st.extraStations || st.allowOtherLaunchSites)) continue;
+        }
         const power = s.kind === 'permanent' ? s.power : st.dsnPower;
         nodes.push({
           id: 'station:' + s.id, name: s.name, home: true, tracked: false, loc: { type: 'landed', body: 'Kerbin', lat: s.lat, lon: s.lon, alt: s.alt || 0 },
           own: power, relay: power, power: power,
         });
       }
+    }
+    // Stations the player wants to model on top of the game's (a modded or planned station): { id, name, lat, lon, alt, power }.
+    for (const c of st.customStations || []) {
+      nodes.push({
+        id: 'station:' + c.id, name: c.name, home: true, tracked: false, loc: { type: 'landed', body: 'Kerbin', lat: c.lat, lon: c.lon, alt: c.alt || 0 },
+        own: c.power || st.dsnPower, relay: c.power || st.dsnPower, power: c.power || st.dsnPower,
+      });
     }
     const homeCount = nodes.length;
     const problems = [];
@@ -87,8 +99,8 @@
         rec._p = Orb.prepare(n.loc.orbit, b.gm);
         rec.period = timeScale(rec._p);
         // opt-in patched conics: follow the vessel through sphere-of-influence exits and encounters (escape trajectories, transfers)
-        if (n.loc.patched && opts.trajectory) {
-          const segs = Traj.build(world, b.id, n.loc.orbit, opts.trajectory.t0, opts.trajectory.horizon);
+        if ((n.loc.patched || (n.loc.burns && n.loc.burns.length)) && opts.trajectory) {
+          const segs = Traj.build(world, b.id, n.loc.orbit, opts.trajectory.t0, opts.trajectory.horizon, n.loc.burns);
           if (segs.length > 1) {
             segs.forEach((sg) => { sg.bodyIdx = sg.body.idx; });
             rec._segs = segs;
@@ -284,6 +296,89 @@
       return trackedIdx.map(evalSource);
     }
 
+    /**
+     * Who can talk to whom at time t (network view). Relay-capable nodes (relay power > 0, the ground stations included) form
+     * the backbone: two of them are joined when their relay link is clear; all ground stations count as one network (the DSN).
+     * Other vessels attach to the backbone with their own antennas, or reach each other directly. Returns
+     * { pair: Uint8Array(n*n) (1 = a path exists between the two), home: Uint8Array(n) (1 = reaches a ground station), comp }.
+     */
+    function connectivityAt(t) {
+      placeNodes(t);
+      buildRelayMatrix();
+      const comp = new Int16Array(n).fill(-1);
+      let nc = 0;
+      const homes = [];
+      for (let i = 0; i < n; i++) if (isHome[i]) homes.push(i);
+      for (const a of relayIdx) {
+        if (comp[a] >= 0) continue;
+        comp[a] = nc;
+        const stack = [a];
+        while (stack.length) {
+          const u = stack.pop();
+          for (const v of relayIdx) if (comp[v] < 0 && relSig[u * n + v] > 0) { comp[v] = nc; stack.push(v); }
+          if (isHome[u]) for (const v of homes) if (comp[v] < 0) { comp[v] = nc; stack.push(v); }
+        }
+        nc++;
+      }
+      // the DSN is one network: merge the components of all ground stations
+      if (homes.length > 1) {
+        const target = comp[homes[0]];
+        for (const hh of homes) if (comp[hh] !== target) { const old = comp[hh]; for (let i = 0; i < n; i++) if (comp[i] === old) comp[i] = target; }
+      }
+      const attach = [];
+      for (let i = 0; i < n; i++) {
+        const set = new Set();
+        if (comp[i] >= 0) set.add(comp[i]);
+        if (nodes[i].relay <= 0 || !isHome[i]) {
+          for (const k of relayIdx) {
+            if (k === i) continue;
+            link(i, k, nodes[i].own, nodes[k].relay, rowSig, rowRng, rowBlk, k, 0);
+            if (rowSig[k] > 0) set.add(comp[k]);
+          }
+        }
+        attach.push(set);
+      }
+      const pair = new Uint8Array(n * n);
+      const homeComp = homes.length ? comp[homes[0]] : -1;
+      const hm = new Uint8Array(n);
+      for (let i = 0; i < n; i++) {
+        hm[i] = attach[i].has(homeComp) ? 1 : 0;
+        for (let j = i + 1; j < n; j++) {
+          let ok = false;
+          for (const c of attach[i]) if (attach[j].has(c)) { ok = true; break; }
+          if (!ok && (nodes[i].relay <= 0 || nodes[j].relay <= 0)) {
+            link(i, j, nodes[i].own, nodes[j].own, rowSig, rowRng, rowBlk, j, 0);
+            ok = rowSig[j] > 0;
+          }
+          pair[i * n + j] = pair[j * n + i] = ok ? 1 : 0;
+        }
+      }
+      return { pair: pair, home: hm, comp: comp };
+    }
+
+    /**
+     * The straight line between two nodes over time, with the real positions of vessels and stations (so a vessel hiding behind its
+     * own planet counts): { samples, blocked (0..1), by: {bodyName: 0..1}, min, max, now } distances in metres.
+     */
+    function sightBetween(i, j, t0, horizon, samples) {
+      const cnt = Math.max(2, samples | 0);
+      const by = {};
+      let blocked = 0, lo = Infinity, hi = 0, now = 0;
+      for (let k = 0; k < cnt; k++) {
+        placeNodes(t0 + (horizon * k) / (cnt - 1));
+        const ax = nodePos[i * 3], ay = nodePos[i * 3 + 1], az = nodePos[i * 3 + 2];
+        const bx = nodePos[j * 3], by_ = nodePos[j * 3 + 1], bz = nodePos[j * 3 + 2];
+        const d = Math.sqrt((bx - ax) * (bx - ax) + (by_ - ay) * (by_ - ay) + (bz - az) * (bz - az));
+        if (k === 0) now = d;
+        if (d < lo) lo = d;
+        if (d > hi) hi = d;
+        const bl = blocker(ax, ay, az, bx, by_, bz);
+        if (bl >= 0) { blocked++; const nm = world.bodies[bl].name; by[nm] = (by[nm] || 0) + 1; }
+      }
+      Object.keys(by).forEach((nm) => { by[nm] /= cnt; });
+      return { samples: cnt, blocked: blocked / cnt, by: by, min: lo, max: hi, now: now };
+    }
+
     /** Evaluate a single tracked source (index into trackedIdx) at time t; much cheaper than evalAt when refining edges. */
     function evalOne(t, s) {
       placeNodes(t);
@@ -328,7 +423,7 @@
 
     return {
       world: world, settings: st, nodes: nodes, homeCount: homeCount, trackedIdx: trackedIdx, problems: problems,
-      evalAt: evalAt, evalOne: evalOne, nodePositionAt: nodePositionAt, snapshot: snapshot, suggestStep: suggestStep,
+      evalAt: evalAt, evalOne: evalOne, connectivityAt: connectivityAt, sightBetween: sightBetween, nodePositionAt: nodePositionAt, snapshot: snapshot, suggestStep: suggestStep,
     };
   }
 

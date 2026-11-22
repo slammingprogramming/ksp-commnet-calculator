@@ -1,0 +1,11 @@
+{
+  "name": "KSP CommNet Workbench",
+  "short_name": "CommNet",
+  "description": "Signal strength, relay chains, orbit tracking, occlusion analysis and relay planning for Kerbal Space Program's CommNet.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f1a2b",
+  "theme_color": "#0f1a2b",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

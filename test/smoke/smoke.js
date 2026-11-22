@@ -11,6 +11,8 @@
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const net = require('node:net');
+const fs = require('node:fs');
+const os = require('node:os');
 const assert = require('node:assert/strict');
 
 let chromium;
@@ -39,16 +41,20 @@ async function main() {
   let steps = 0;
   const step = (name) => { steps++; console.log('ok  ' + name); };
   try {
-    const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
-    page.on('console', (m) => { if (m.type() === 'error') problems.push('console error: ' + m.text()); });
-    page.on('pageerror', (e) => problems.push('page error: ' + e.message));
-    page.on('request', (r) => { if (!r.url().startsWith(base) && !r.url().startsWith('data:') && !r.url().startsWith('blob:')) problems.push('external request: ' + r.url()); });
-    page.on('dialog', (d) => d.accept());
+    const prompts = [];
+    const watch = (p) => {
+      p.on('console', (m) => { if (m.type() === 'error') problems.push('console error: ' + m.text()); });
+      p.on('pageerror', (e) => problems.push('page error: ' + e.message + (e.stack ? ' | ' + e.stack.split(String.fromCharCode(10)).slice(0, 4).join(' <- ') : '')));
+      p.on('request', (r) => { if (!r.url().startsWith(base) && !r.url().startsWith('data:') && !r.url().startsWith('blob:')) problems.push('external request: ' + r.url()); });
+      p.on('dialog', (d) => { if (d.type() === 'prompt') prompts.push(d.defaultValue()); d.accept(); });
+      return p;
+    };
+    const page = watch(await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage());
 
     await page.goto(base);
     await page.waitForSelector('#tabs button');
     const tabs = await page.$$eval('#tabs button', (bs) => bs.map((b) => b.id));
-    assert.deepEqual(tabs, ['tabbtn-chain', 'tabbtn-finder', 'tabbtn-reach', 'tabbtn-scenario', 'tabbtn-tracker', 'tabbtn-planner', 'tabbtn-antennas', 'tabbtn-help']);
+    assert.deepEqual(tabs, ['tabbtn-chain', 'tabbtn-finder', 'tabbtn-reach', 'tabbtn-scenario', 'tabbtn-tracker', 'tabbtn-planner', 'tabbtn-network', 'tabbtn-reentry', 'tabbtn-transfer', 'tabbtn-antennas', 'tabbtn-help']);
     for (const id of tabs) {
       await page.click('#' + id);
       const panel = '#tab-' + id.replace('tabbtn-', '');
@@ -80,6 +86,114 @@ async function main() {
     await page.click('#tab-planner button:has-text("Test it")');
     await page.waitForSelector('#tab-planner .verdict', { timeout: 90000 });
     step('planner what-if');
+
+    // Network planner and reentry
+    await page.click('#tabbtn-network');
+    await page.click('#tab-network button:has-text("Analyze the network")');
+    await page.waitForSelector('#tab-network table th:has-text("DSN")', { timeout: 60000 });
+    await page.click('#tab-network button:has-text("Compare station sets")');
+    await page.waitForSelector('#tab-network >> text=Kerbal Space Center only', { timeout: 60000 });
+    step('network planner');
+    await page.click('#tabbtn-reentry');
+    await page.waitForSelector('#tab-reentry >> text=Blackout:', { timeout: 30000 });
+    await page.click('#tab-reentry button:has-text("Find the blackout-free speed")');
+    await page.waitForSelector('#tab-reentry >> text=No total blackout', { timeout: 60000 });
+    step('reentry blackout');
+
+    await page.click('#tabbtn-transfer');
+    await page.click('#tab-transfer button:has-text("Find launch windows")');
+    await page.waitForSelector('#tab-transfer table tbody tr', { timeout: 30000 });
+    step('launch windows');
+
+    // Manoeuvre burn + patched conics on the example's first orbiting vessel, then the tracker's mouse and keyboard navigation
+    await page.click('#tabbtn-scenario');
+    await page.check('#tab-scenario label:has-text("Follow patched conics") input >> nth=0');
+    await page.click('#tab-scenario button:has-text("Add a burn") >> nth=0');
+    await page.fill('#tab-scenario input[aria-label="prograde m/s"] >> nth=0', '900');
+    await page.keyboard.press('Tab');
+    await page.waitForSelector('#tab-scenario >> text=Total 900 m/s', { timeout: 10000 });
+    await page.click('#tabbtn-tracker');
+    const cv = await page.$('#tab-tracker canvas.tracker-canvas');
+    const box = await cv.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, -300);
+    await page.mouse.down(); await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2 + 40, { steps: 5 }); await page.mouse.up();
+    await cv.focus();
+    await page.keyboard.press('d'); await page.keyboard.press('w'); await page.keyboard.press('+'); await page.keyboard.press('0');
+    step('burn, patched conics, tracker pan and zoom');
+
+    // Share link round trip: the link opens in a fresh browser profile and rebuilds the same scenario
+    await page.click('#tabbtn-scenario');
+    const count = await page.locator('#tab-scenario .scn-list > *').count();
+    await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('blocked')) }, configurable: true }); });
+    await page.click('#tab-scenario button:has-text("Copy share link")');
+    await page.waitForSelector('text=holds the whole scenario');
+    const link = prompts.find((p) => /#s=/.test(p));
+    assert.ok(link, 'share link was offered');
+    const other = watch(await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage());
+    await other.goto(link);
+    await other.waitForSelector('#tab-scenario .scn-list > *', { timeout: 20000 });
+    assert.equal(await other.locator('#tab-scenario .scn-list > *').count(), count);
+    assert.match(await other.innerText('#tab-scenario'), /900|prograde/i);
+    await other.context().close();
+    step('share link round trip');
+
+    // Save import from a made-up persistent.sfs
+    const sfs = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'kspcn-')), 'persistent.sfs');
+    fs.writeFileSync(sfs, `GAME
+{
+	Title = Smoke test save
+	Mode = CAREER
+	FLIGHTSTATE
+	{
+		UT = 1000
+		VESSEL
+		{
+			name = Smoke relay
+			type = Relay
+			sit = ORBITING
+			PART
+			{
+				name = RelayAntenna50
+			}
+			ORBIT
+			{
+				SMA = 1000000
+				ECC = 0
+				INC = 0
+				LPE = 0
+				LAN = 0
+				MNA = 0
+				EPH = 1000
+				REF = 1
+			}
+		}
+	}
+}
+`);
+    await page.setInputFiles('input[aria-label="KSP save file"]', sfs);
+    await page.waitForSelector('text=Loaded “Smoke test save”', { timeout: 10000 });
+    await page.click('#tabbtn-scenario');
+    assert.ok(await page.locator('select[aria-label="Add a vessel from the save"] option:has-text("Smoke relay")').count());
+    step('save import');
+
+    // Planner budget fields are there and keep their value
+    await page.click('#tabbtn-planner');
+    await page.fill('#tab-planner input[aria-label="Most relays"]', '2');
+    assert.equal(await page.inputValue('#tab-planner input[aria-label="Most relays"]'), '2');
+    step('planner budget fields');
+
+    // Phone-sized screen: no tab scrolls sideways
+    const phone = watch(await (await browser.newContext({ viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true })).newPage());
+    await phone.goto(base);
+    await phone.waitForSelector('#tabs button');
+    for (const id of await phone.$$eval('#tabs button', (bs) => bs.map((b) => b.id))) {
+      await phone.evaluate((i) => document.getElementById(i).click(), id);
+      const over = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(over <= 1, id + ' overflows a phone screen by ' + over + 'px');
+    }
+    await phone.context().close();
+    step('phone layout');
 
     // Export a file
     await page.click('#tabbtn-scenario');

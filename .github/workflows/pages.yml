@@ -30,7 +30,7 @@ jobs:
       - name: Assemble site
         run: |
           mkdir dist
-          cp -r index.html css js LICENSE dist/
+          cp -r index.html css js sw.js manifest.webmanifest icon.svg LICENSE dist/
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

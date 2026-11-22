@@ -16,7 +16,13 @@
   function createWorld(opts) {
     opts = opts || {};
     const packs = opts.packs || {};
-    const defs = Data.bodies.concat(opts.extraBodies || []).filter((b) => b.pack === 'stock' || packs[b.pack] || b.pack === 'custom');
+    const extra = opts.extraBodies || [];
+    // A pack that defines its own Kerbin replaces the whole stock system (Real Solar System style): the stock bodies it does
+    // not redefine are dropped. Otherwise a body with the same id as a stock body replaces just that body.
+    const replacesSystem = extra.some((b) => b.id === 'Kerbin');
+    const extraIds = new Set(extra.map((b) => b.id));
+    const base = Data.bodies.filter((b) => !extraIds.has(b.id) && !(replacesSystem && !b.star));
+    const defs = base.concat(extra).filter((b) => b.pack === 'stock' || packs[b.pack] || b.pack === 'custom');
     const resolved = defs.map((d) => {
       const useOpm = d.opm && packs.opm;
       return {
@@ -34,6 +40,7 @@
       if (f.parent) b.parent = f.parent;
       if (f.orbit) b.orbit = Object.assign({}, b.orbit || { a: 0, e: 0, i: 0, lan: 0, w: 0, m0: 0, epoch: 0 }, f.orbit);
       if (f.radius !== undefined) b.radius = f.radius;
+      if (f.radiusScale) b.radius *= f.radiusScale;
       if (f.gm !== undefined) b.gm = f.gm;
       else if (f.geeASL !== undefined) b.gm = f.geeASL * Data.G0 * b.radius * b.radius;
       if (f.rot !== undefined) b.rot = f.rot;
@@ -85,7 +92,17 @@
     });
     ordered.forEach((b) => { if (b.parentBody) b.parentBody.moons.push(b); });
 
+    // Calendar: the home world's solar day and its year in whole days (stock Kerbin: 6 h, 426 d; an Earth pack: 24 h, 365 d).
+    const home = index.get('Kerbin');
+    const calendar = { day: 21600, daysPerYear: 426 };
+    if (home && home._p && home.rot > 0 && isFinite(home.orbitalPeriod)) {
+      const day = 1 / (1 / home.rot - 1 / home.orbitalPeriod);
+      calendar.day = Math.round(day / 60) * 60;
+      calendar.daysPerYear = Math.max(1, Math.round(home.orbitalPeriod / calendar.day));
+    }
+
     const world = {
+      calendar: calendar,
       bodies: ordered,
       index: index,
       root: ordered.find((b) => !b.parent),

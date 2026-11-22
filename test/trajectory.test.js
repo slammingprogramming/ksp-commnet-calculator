@@ -78,3 +78,23 @@ test('a Kerbol orbit far from every planet stays one segment', () => {
   assert.equal(segs.length, 1);
   assert.equal(segs[0].body, kerbol);
 });
+
+test('burns: a prograde burn from low Kerbin orbit raises the apoapsis; a big one escapes to a Kerbol orbit', () => {
+  const orbit = Orb.orbitFromAltitudes(kerbin, 100000, 100000, 0, 0, 0, 0);
+  const t = 5000;
+  const small = Traj.build(world, 'Kerbin', orbit, 0, 2 * Orb.YEAR, [{ t: t, prograde: 200, normal: 0, radial: 0 }]);
+  assert.equal(small.length, 2);
+  assert.ok(Math.abs(small[0].to - t) < 1e-6);
+  assert.ok(small[1].orbit.a > small[0].orbit.a && small[1].orbit.e > 0.01 && small[1].orbit.e < 1);
+  // position and velocity are continuous across the burn except for the delta-v
+  const before = absState(small[0], t), after = absState(small[1], t);
+  assert.ok(Math.hypot(before.r[0] - after.r[0], before.r[1] - after.r[1], before.r[2] - after.r[2]) < 1);
+  assert.ok(Math.abs(Math.hypot(after.v[0] - before.v[0], after.v[1] - before.v[1], after.v[2] - before.v[2]) - 200) < 1e-3);
+  const big = Traj.build(world, 'Kerbin', orbit, 0, 2 * Orb.YEAR, [{ t: t, prograde: 1000, normal: 0, radial: 0 }]);
+  assert.ok(big.length >= 3 && big[big.length - 1].body.id === 'Kerbol', 'segments ' + big.map((s) => s.body.id).join('>'));
+  // a normal burn tilts the plane
+  const tilt = Traj.build(world, 'Kerbin', orbit, 0, Orb.YEAR, [{ t: t, prograde: 0, normal: 500, radial: 0 }]);
+  assert.ok(Math.abs(tilt[1].orbit.i) > 5);
+  // burns outside the horizon are ignored
+  assert.equal(Traj.build(world, 'Kerbin', orbit, 0, 1000, [{ t: 5000, prograde: 100 }]).length, 1);
+});

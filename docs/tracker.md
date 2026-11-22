@@ -27,10 +27,15 @@ off the picture.
 * **Time (UT)** takes a date in KSP's calendar (`Y1 D1 00:00:00`). **Play** runs time at the **Speed** you pick, from one
   minute per second up to a year per second. The −1 day, −1 h, +1 h, +1 day and +10 days buttons step it.
 * **View centred on** follows any body; **Zoom +**, **Zoom −** and **Fit** change the scale (the scale bar is in the
-  corner).
+  corner). **Drag** the view to move it, and **scroll** (mouse) or **pinch** (touch screen) to zoom; **Fit** puts it back.
 * **Projection** is *Top-down (orbital plane)* or *Edge-on*, which shows inclination.
-* **Keyboard** (click the view first): `+` and `−` zoom, `0` fits, `V` switches projection, `←` and `→` step one hour
-  (hold Shift for one day), `Space` plays or pauses.
+* **Keyboard** (click the view first): `+` and `−` zoom, `W` `A` `S` `D` move the view, `0` fits, `V` switches
+  projection, `←` and `→` step one hour (hold Shift for one day), `Space` plays or pauses.
+
+The app follows your system's light or dark theme; the colours meet WCAG AA contrast in both. On a phone or tablet the
+tracker works by touch (drag to move, pinch to zoom).
+
+![The tracker in the light theme](img/tracker-light.png)
 
 The **Right now** card gives each tracked vessel's state at the current time: the signal and the path to home
 (`Far-side lander → Mun relay 1/4 → Kerbal Space Center`), or **OUT** and what blocks it.

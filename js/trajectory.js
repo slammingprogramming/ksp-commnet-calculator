@@ -13,7 +13,7 @@
 })(typeof self !== 'undefined' ? self : this, function (Orb) {
   'use strict';
 
-  const MAX_SEGMENTS = 8;
+  const MAX_SEGMENTS = 16;
   const MAX_STEPS = 400000;
 
   const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
@@ -29,7 +29,7 @@
    * runs from t0 to t0 + horizon; after the last event (or the horizon) the final conic simply continues.
    * `body` is the world body the segment is measured about.
    */
-  function build(world, bodyId, orbit, t0, horizon) {
+  function build(world, bodyId, orbit, t0, horizon, burns) {
     let body = world.index.get(bodyId);
     if (!body) return [];
     const tEnd = t0 + horizon;
@@ -38,6 +38,9 @@
     let from = -Infinity;
     let tScan = t0;
     const r1 = [0, 0, 0], v1 = [0, 0, 0], r2 = [0, 0, 0], v2 = [0, 0, 0];
+    // Impulsive burns { t, prograde, normal, radial } (m/s in the vessel's orbital frame), applied in time order.
+    const plan = (burns || []).filter((b) => b && isFinite(b.t) && b.t >= t0 && b.t < tEnd).sort((a, b) => a.t - b.t);
+    let nextBurn = 0;
 
     for (let k = 0; k < MAX_SEGMENTS; k++) {
       const p = Orb.prepare(el, body.gm);
@@ -48,15 +51,24 @@
           const cr = radialRange(c.orbit);
           return rr.hi >= cr.lo - c.soiRadius && rr.lo <= cr.hi + c.soiRadius;
         });
+      while (nextBurn < plan.length && plan[nextBurn].t < tScan) nextBurn++;
+      const burn = nextBurn < plan.length ? plan[nextBurn] : null;
+      const limit = burn ? Math.min(tEnd, burn.t) : tEnd;
       let ev = null;
-      if ((canExit || kids.length) && tScan < tEnd) ev = nextEvent(body, p, el, canExit, kids, tScan, tEnd);
+      if ((canExit || kids.length) && tScan < limit) ev = nextEvent(body, p, el, canExit, kids, tScan, limit);
+      if (!ev && burn) ev = { kind: 'burn', t: burn.t, burn: burn };
       if (!ev) { segs.push({ from: from, to: Infinity, body: body, orbit: el, p: p }); break; }
       segs.push({ from: from, to: ev.t, body: body, orbit: el, p: p });
 
       // state at the event, relative to the old body
       Orb.position(p, ev.t, r1); Orb.velocity(p, ev.t, v1);
       let next, nextEl;
-      if (ev.kind === 'exit') {
+      if (ev.kind === 'burn') {
+        nextBurn++;
+        next = body;
+        const dv = applyBurn(r1, v1, ev.burn);
+        nextEl = Orb.elementsFromState(r1, dv, body.gm, ev.t);
+      } else if (ev.kind === 'exit') {
         next = body.parentBody;
         Orb.position(body._p, ev.t, r2); Orb.velocity(body._p, ev.t, v2);
         nextEl = Orb.elementsFromState([r1[0] + r2[0], r1[1] + r2[1], r1[2] + r2[2]], [v1[0] + v2[0], v1[1] + v2[1], v1[2] + v2[2]], next.gm, ev.t);
@@ -70,6 +82,18 @@
       tScan = ev.t + 1; // step off the boundary so the same crossing is not found twice
     }
     return segs;
+  }
+
+  /** Velocity after an impulsive burn: prograde along v, normal along r x v, radial out completing the right-handed set. */
+  function applyBurn(r, v, b) {
+    const vl = Math.hypot(v[0], v[1], v[2]);
+    const pg = [v[0] / vl, v[1] / vl, v[2] / vl];
+    let n = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]];
+    const nl = Math.hypot(n[0], n[1], n[2]);
+    n = [n[0] / nl, n[1] / nl, n[2] / nl];
+    const rad = [n[1] * pg[2] - n[2] * pg[1], n[2] * pg[0] - n[0] * pg[2], n[0] * pg[1] - n[1] * pg[0]];
+    const a = b.prograde || 0, c = b.normal || 0, d = b.radial || 0;
+    return [v[0] + a * pg[0] + c * n[0] + d * rad[0], v[1] + a * pg[1] + c * n[1] + d * rad[1], v[2] + a * pg[2] + c * n[2] + d * rad[2]];
   }
 
   function nextEvent(body, p, el, canExit, kids, tScan, tEnd) {
@@ -125,5 +149,5 @@
     return segs[segs.length - 1];
   }
 
-  return { build: build, segmentAt: segmentAt, MAX_SEGMENTS: MAX_SEGMENTS };
+  return { build: build, segmentAt: segmentAt, applyBurn: applyBurn, MAX_SEGMENTS: MAX_SEGMENTS };
 });

@@ -12,7 +12,6 @@
   const h = App.h;
 
   const HORIZONS = [['1 year', 1], ['2 years', 2], ['4 years', 4], ['8 years', 8]];
-  const YEAR = Data.YEAR;
 
   const pct = (x) => (x * 100).toFixed(x > 0.99 ? 2 : 1) + '%';
 
@@ -176,12 +175,24 @@
 
     function problem() {
       return {
-        world: App.world, lookup: App.lookup, settings: designSettings(), nodes: plannerNodes(), t0: st.scenario.ut, horizon: pp.horizon * YEAR,
+        world: App.world, lookup: App.lookup, settings: designSettings(), nodes: plannerNodes(), t0: st.scenario.ut, horizon: pp.horizon * Data.YEAR,
         target: pp.target / 100, minSignal: pp.minSignal / 100, pool: App.enabledAntennas(), robust: pp.robust,
+        limits: { maxRelays: pp.limits.relays, maxMass: pp.limits.mass, maxCost: pp.limits.cost }, targets: targetsByName(),
       };
     }
 
+    function targetsByName() {
+      const t = {};
+      Scn.simNodes().filter((n) => n.tracked !== false && !n.planned).forEach((n) => { const v = pp.targets && pp.targets[n.id]; if (v > 0) t[n.name] = v / 100; });
+      return t;
+    }
+
     function renderOptions() {
+      const lim = (label, key, step) => {
+        const i = h('input', { type: 'number', min: 0, step: step, value: pp.limits[key] || '', placeholder: 'no limit', 'aria-label': label });
+        i.addEventListener('input', () => { const v = parseFloat(i.value); pp.limits[key] = v > 0 ? v : 0; App.saveState(); });
+        return h('div', { class: 'field' }, h('label', { text: label }), i);
+      };
       const hz = h('select', { 'aria-label': 'Planning horizon' }, HORIZONS.map((x) => h('option', { value: String(x[1]), text: x[0] })));
       hz.value = String(pp.horizon);
       hz.addEventListener('change', () => { pp.horizon = parseFloat(hz.value); App.saveState(); });
@@ -199,7 +210,9 @@
         goals.map((n) => {
           const cb = h('input', { type: 'checkbox', checked: !(pp.skip && pp.skip[n.id]) });
           cb.addEventListener('change', () => { if (!pp.skip) pp.skip = {}; if (cb.checked) delete pp.skip[n.id]; else pp.skip[n.id] = true; App.saveState(); });
-          return h('label', { class: 'inline', style: 'color:var(--text);display:flex' }, cb, n.name);
+          const tg = h('input', { type: 'number', min: 1, max: 100, step: 0.1, value: (pp.targets && pp.targets[n.id]) || '', placeholder: 'target %', size: 6, 'aria-label': 'Own uptime target for ' + n.name, style: 'width:7em;margin-left:8px' });
+          tg.addEventListener('input', () => { if (!pp.targets) pp.targets = {}; const v = parseFloat(tg.value); if (v > 0) pp.targets[n.id] = v; else delete pp.targets[n.id]; App.saveState(); });
+          return h('label', { class: 'inline', style: 'color:var(--text);display:flex;align-items:center' }, cb, n.name, tg);
         })) : null;
       const run = h('button', { class: 'btn primary', type: 'button' }, 'Design a fix');
       const cancel = h('button', { class: 'btn ghost', type: 'button', hidden: true }, 'Cancel');
@@ -241,6 +254,8 @@
           h('div', { class: 'field' }, h('label', { text: 'Target uptime %' }), target),
           h('div', { class: 'field' }, h('label', { text: 'Weakest usable signal %' }), minSig)),
         goalBox,
+        h('div', { class: 'row', style: 'margin-top:8px' }, lim('Most relays', 'relays', 1), lim('Most antenna mass (t)', 'mass', 0.1), lim('Most cost (funds)', 'cost', 100)),
+        h('small', { class: 'hint', text: 'Optional budget: the planner drops the fixes that matter least until the design fits, and tells you what that costs in uptime. A vessel can also get its own uptime target.' }),
         h('div', { style: 'margin-top:8px' },
           h('label', { class: 'inline', style: 'color:var(--text);display:flex' }, robust, 'Design for every landing site on the bodies involved, not just today’s vessel'),
           h('label', { class: 'inline', style: 'color:var(--text);display:flex' }, hard, 'Design for the hardest difficulty (occlusion ×1.0, range ×0.65)')),
@@ -351,6 +366,20 @@
         parts.push(h('div', { class: 'callout' }, h('strong', { text: 'Cheapest alternative: ' }), 'turning on the difficulty option “Enable Extra Groundstations” alone would give ' + pct(plan.extraStations.uptime) + ' uptime without launching anything (it adds six more Kerbin stations at the DSN rating, so Kerbin’s night side stops mattering).'));
       }
 
+      // budget and per-vessel goals
+      if (plan.budget) {
+        const bd = plan.budget, u = bd.used;
+        parts.push(h('div', { class: 'card ' + (bd.satisfied ? '' : 'warn') },
+          h('h3', { text: 'Your budget' }),
+          h('p', {}, (bd.satisfied ? 'The design fits: ' : 'It does not fit even with every fix removed: ') + u.count + ' relay' + (u.count === 1 ? '' : 's') + ', ' + u.mass.toFixed(2) + ' t, ' + Math.round(u.cost).toLocaleString('en-US') + ' funds.'),
+          bd.dropped.length ? h('p', { class: 'hint', text: 'To fit, the planner dropped ' + bd.dropped.map((d) => d.count + ' relay' + (d.count === 1 ? '' : 's') + ' (' + d.group + ')').join(', ') + ', which is why the uptime above may be below the target. Raise the limit to get the full design back.' }) : h('p', { class: 'hint', text: 'The full design was already within your limits.' })));
+      }
+      if (plan.targets && plan.targets.length) {
+        parts.push(h('div', { class: 'card' },
+          h('h3', { text: 'Per-vessel targets' }),
+          h('table', {}, h('thead', {}, h('tr', {}, h('th', { text: 'Vessel' }), h('th', { class: 'num', text: 'Target' }), h('th', { class: 'num', text: 'Uptime' }), h('th', { text: '' }))),
+            h('tbody', {}, plan.targets.map((t) => h('tr', {}, h('td', { text: t.name }), h('td', { class: 'num', text: pct(t.target) }), h('td', { class: 'num', text: pct(t.uptime) }), h('td', { class: t.met ? 'good' : 'bad', text: t.met ? 'met' : 'not met' })))))));
+      }
       // stress
       parts.push(h('div', { class: 'card' },
         h('h3', { text: 'Does the design survive other difficulty settings?' }),
@@ -377,6 +406,11 @@
       void bodies;
       const withPlan = h('select', { 'aria-label': 'Which relays to include' },
         h('option', { value: 'with', text: 'With the planned relays' }), h('option', { value: 'without', text: 'Without them (today’s relays only)' }));
+      // Cell size (latitude × longitude) and how many 3-day windows to average: finer maps take proportionally longer
+      const RES = [['Coarse (30° × 45°, 2 windows)', 30, 45, 2], ['Normal (20° × 30°, 3 windows)', 20, 30, 3], ['Fine (10° × 15°, 4 windows)', 10, 15, 4]];
+      const resSel = h('select', { 'aria-label': 'Map resolution' }, RES.map((r, i) => h('option', { value: String(i), text: r[0] })));
+      resSel.value = String(coverageCard.res === undefined ? 1 : coverageCard.res);
+      resSel.addEventListener('change', () => { coverageCard.res = parseInt(resSel.value, 10); });
       const go = h('button', { class: 'btn', type: 'button' }, 'Compute coverage map');
       const canvas = h('canvas', { class: 'map-canvas', role: 'img', 'aria-label': 'Map of connection uptime across the body’s surface' });
       const note = h('p', { class: 'hint' });
@@ -387,18 +421,19 @@
         const P = result.P;
         // include planned relays as untracked nodes
         const nodes = P.nodes.filter((n) => !n.planned).concat(withPlan.value === 'with' ? plan.planned : []);
-        const gen = Pl.coverageGen(Object.assign({}, P, { nodes: nodes }), bodyId, 20, 30, 3, 3 * Data.DAY);
+        const rs = RES[parseInt(resSel.value, 10)] || RES[1];
+        const gen = Pl.coverageGen(Object.assign({}, P, { nodes: nodes }), bodyId, rs[1], rs[2], rs[3], 3 * Data.DAY);
         (function tick() {
           const stop = Date.now() + 30;
           let r;
           do { r = gen.next(); } while (!r.done && Date.now() < stop);
           if (!r.done) { setTimeout(tick, 0); return; }
           go.disabled = false;
-          note.textContent = 'Uptime of a lander with a small direct antenna (Communotron 16) at each spot, averaged over three 3-day windows spread across the look-ahead period. It shows what your relay network gives any future landing site.';
+          note.textContent = 'Uptime of a lander with a small direct antenna (Communotron 16) at each spot, averaged over ' + rs[3] + ' 3-day windows spread across the look-ahead period. It shows what your relay network gives any future landing site.';
           drawMap(canvas, r.value, bodyId);
         })();
       });
-      card.append(h('h3', { text: 'Surface coverage' }), h('div', { class: 'row' }, bodySel, withPlan, go), note, canvas);
+      card.append(h('h3', { text: 'Surface coverage' }), h('div', { class: 'row' }, bodySel, withPlan, resSel, go), note, canvas);
       return card;
     }
 

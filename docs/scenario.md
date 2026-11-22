@@ -64,8 +64,17 @@ The Tracker draws each leg of the trajectory about its own body:
 
 ![The escape probe leaving Kerbin's sphere of influence in the tracker](img/tracker-escape.png)
 
-This is the path the vessel takes if it does nothing more. It has no manoeuvre nodes, so it cannot predict a burn you
-have not made yet.
+Without burns this is the path the vessel takes if it does nothing more. To plan a transfer, add **manoeuvres** to the
+vessel (below).
+
+## Manoeuvres
+
+An orbiting vessel has a **Manoeuvres** list. **Add a burn** gives it a time and a prograde, normal and radial speed
+change in m/s (prograde along the velocity, normal out of the orbital plane, radial away from the body); the card shows
+the total. The burns are impulsive and applied in time order; after the last one the vessel follows its patched conics,
+so a transfer, a capture or an escape appears in the Tracker and in every link calculation. Up to 12 burns per vessel
+are kept, and they are part of exports and share links. Use the [Launch windows](launch-windows.md) tab to find when to
+burn and how much.
 
 ## Export, import and share links
 

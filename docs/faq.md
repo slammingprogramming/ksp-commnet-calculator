@@ -47,8 +47,8 @@ differs, [open an issue](https://github.com/slammingprogramming/ksp-commnet-calc
 
 ## What is not modelled?
 
-Plasma blackout (a re-entry transient only), orbital perturbations (the game has none), manoeuvre nodes, other mods'
-signal multipliers and science bonuses. See the table in [How the model works](model.md#accuracy-and-limits).
+Plasma blackout inside the relay simulation (it only happens during an atmospheric entry, which the Reentry tab covers),
+orbital perturbations (the game has none), powered flight and fuel, other mods' signal multipliers and science bonuses. See the table in [How the model works](model.md#accuracy-and-limits).
 
 ## The planner takes a long time
 

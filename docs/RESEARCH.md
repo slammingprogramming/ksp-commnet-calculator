@@ -83,7 +83,14 @@ The rules below were read from the 1.12.5 `Assembly-CSharp.dll` with `tools/ildu
 * **Plasma blackout** (`CommNetParams.plasmaBlackout`) is a re-entry transient: `CommNetVessel.CalculatePlasmaMult`
   looks at a loaded vessel's external temperature, atmospheric density, dynamic pressure × surface speed and the angle
   to the flow, and `GetSignalStrengthModifier` scales the vessel's signal by the result. It is the only signal
-  multiplier, and it is zero for orbiting and landed vessels, so it has no place in orbit or relay planning.
+  multiplier, and it is zero for orbiting and landed vessels, so it has no place in orbit or relay planning. It is
+  modelled on the Reentry tab (`js/reentry.js`) with the rules as read: shock temperature = speed, blended from Mach 2 to
+  Mach 5 into 21 × speed^0.75, times `ReentryHeatScale` (Easy 0.5, else 1) and the body's `shockTemperatureMultiplier`;
+  plasma only above 1100 K and 5×10⁻⁵ kg/m³ with `q × v` (q = 0.0005 ρ v², kPa) between 500 and 2500; per link the angle
+  term `InverseLerp(−0.866, −0.5, dot)`; and the signal factor is zero below 0.5. Air density is
+  P·M / (R·T) from the temperature and pressure `FloatCurve`s of each `CelestialBody` prefab, which
+  `tools/unityscan` reads (`atmospheres()`) into `Data.ATMOSPHERES` (Kerbin, Eve, Duna, Jool, Laythe). Kerbin sea level
+  comes out at 1.2250 kg/m³, the textbook value. The entry itself is a point mass with a constant ballistic coefficient.
 * **Perturbations:** stock KSP propagates vessels on patched conics (one two-body orbit per sphere of influence), so a
   two-body model *is* the game's model. Only the SOI hand-over needed adding (`js/trajectory.js`).
 * **Extended antennas:** `ModuleDataTransmitter.CanComm` returns false for a deployable antenna that is not fully
@@ -172,8 +179,12 @@ reachability matrix and the difficulty modifiers; the implementation and data ar
 
 * Whether the game's path-finder ever prefers a relayed path over a working direct one (wiki says no).
 * Spin phase and station positions for bodies and sites added by mods (the stock ones are read from the game).
-* Not modelled, with reasons in section 2: plasma blackout (re-entry transient only), orbital perturbations (the game
-  has none), mods' own signal multipliers (not looked for in other mods' code).
+* Not modelled, with reasons in section 2: plasma blackout inside the orbit/relay simulation (re-entry transient only;
+  the Reentry tab models it for landings), orbital perturbations (the game has none), mods' own signal multipliers (not
+  looked for in other mods' code). The entry model ignores lift and the sun/latitude temperature bias of the air.
+* Planet packs: the importer was run against the real Real Solar System configs (all bodies import; Earth-sized
+  keostationary height 35 793 km; planner, tracker and network work). JNSQ was not tested (its repository could not be
+  cloned in the session); it uses the same Kopernicus syntax.
 * Vessels opted in to *patched conics* follow SOI exits and encounters on a fixed conic (`js/trajectory.js`, at most
   8 legs over 25 years, no burns). Others stay on one conic about their body. Kopernicus binaries (Plock-Karen) are
   simplified.

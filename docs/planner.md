@@ -64,10 +64,26 @@ Try your own idea in seconds. Choose a body, a number of relays, an altitude, an
 each carries, and press **Test it**: the app puts the ring in and shows what it does to every tracked vessel, with the
 same look-ahead as the planner.
 
+## Budget and targets
+
+Under the options you can set a **budget**: most relays, most antenna mass (tonnes) and most cost (funds). The planner
+designs as usual, then drops the fix that matters least, one group at a time, until the design fits, and the result
+shows what the budget cost you in uptime. A vessel can also get its **own uptime target** (next to its name under
+*Plan for these vessels*); the result lists whether each target is met.
+
+**Reuse of what you have:** every relay already in the scenario counts as part of the network, so the planner only adds
+what is missing. Put your existing relays in the Scenario tab first.
+
+## Coverage map resolution
+
+The surface coverage map has a **resolution** choice: coarse (30° × 45° cells, two 3-day windows), normal (20° × 30°,
+three windows) or fine (10° × 15°, four windows). Finer maps take proportionally longer.
+
 ## Limits
 
 * The search is a heuristic: it finds good designs and verifies them by simulation, but they are not provably optimal.
-* Relays follow circular, equally spaced rings and solar relays 60° from Kerbin. It does not design arbitrary
+* Candidate shapes are circular equally spaced rings (equatorial or polar), keostationary rings for Kerbin, elliptical
+  rings (a low periapsis and a high apoapsis) and solar relays 60° from Kerbin. It does not design arbitrary
   constellations.
 * Everything is judged with the two-body model described in [How the model works](model.md): no manoeuvres, no
   perturbations (the game has none).

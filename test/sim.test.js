@@ -187,3 +187,15 @@ test('patched conics: an escape probe is carried out of Kerbin\'s sphere of infl
   const res = Sim.scanSync(on, 0, 40 * Data.DAY, 3600);
   assert.ok(res.sources[0].uptime >= 0 && res.sources[0].uptime <= 1);
 });
+
+test('sightBetween: a lander is cut off from Kerbin by the Mun half the time at most, and the measured distance is the actual one', () => {
+  const sim = build([landed('far', 'Mun', 0, 227.436, [{ id: K.hg55, count: 1 }]), landed('near', 'Mun', 0, 47.436, [{ id: K.hg55, count: 1 }])], { extraStations: false });
+  const idx = (nm) => sim.nodes.findIndex((n) => n.name === nm);
+  const ksc = sim.nodes.findIndex((n) => n.home);
+  const far = sim.sightBetween(idx('far'), ksc, 0, 6 * Data.DAY, 400);
+  const near = sim.sightBetween(idx('near'), ksc, 0, 6 * Data.DAY, 400);
+  assert.ok(far.blocked > 0.9, 'far side blocked ' + far.blocked);
+  assert.ok(far.by.Mun > 0.5);
+  assert.ok(near.blocked < far.blocked);
+  assert.ok(near.min > 1e7 && near.max < 2e7 && near.now >= near.min && near.now <= near.max);
+});

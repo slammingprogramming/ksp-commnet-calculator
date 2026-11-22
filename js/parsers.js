@@ -141,6 +141,8 @@
     for (const r of roots) {
       for (const b of r.children) {
         if (stripOp(b.name) !== 'Body') continue;
+        // MM filters such as `@Body:HAS[@Atmosphere]` are not patches of one body
+        if (/^[@%]Body\s*:/.test(b.name)) continue;
         const isPatch = /^[@%]/.test(b.name) && /\[/.test(b.name);
         const name = isPatch ? patchTarget(b.name) : kget(b, 'name');
         if (!name) { out.warnings.push('A Body without a name was skipped.'); continue; }
@@ -161,6 +163,12 @@
           const rot = num(kget(props, 'rotationPeriod'));
           if (locked !== undefined && /^true$/i.test(locked)) f.rot = 'locked';
           else if (rot !== undefined) f.rot = rot;
+          // relative edits such as `@radius *= 1.0226` (RSS oblate planets)
+          for (const p of props.vals) {
+            const m = /^[@%]?radius\s*([*\/])$/.exec(p[0]);
+            const v = m ? num(p[1]) : undefined;
+            if (v > 0) f.radiusScale = (f.radiusScale || 1) * (m[1] === '*' ? v : 1 / v);
+          }
           const rot0 = num(kget(props, 'initialRotation'));
           if (rot0 !== undefined) f.rot0 = rot0;
           const soi = num(kget(props, 'sphereOfInfluence'));
@@ -176,14 +184,19 @@
           const o = {};
           const keys = [['a', 'semiMajorAxis'], ['e', 'eccentricity'], ['i', 'inclination'], ['lan', 'longitudeOfAscendingNode'], ['w', 'argumentOfPeriapsis'], ['m0', 'meanAnomalyAtEpoch'], ['epoch', 'epoch']];
           for (const [k, key] of keys) { const v = num(kget(orbitNode, key)); if (v !== undefined) o[k] = v; }
+          // Real Solar System style packs give the mean anomaly in degrees
+          const m0d = num(kget(orbitNode, 'meanAnomalyAtEpochD'));
+          if (m0d !== undefined && o.m0 === undefined) o.m0 = (m0d * Math.PI) / 180;
           const ref = kget(orbitNode, 'referenceBody');
           if (ref !== undefined) f.parent = ref === 'Sun' ? 'Kerbol' : ref;
           f.orbit = o;
         }
         if (isPatch) { out.patches.push({ id: name, fields: f }); continue; }
+        // A pack's own "Sun" / "Kerbol" entry has no orbit: it only changes the star (radius, mass), so treat it as a patch of Kerbol.
+        if (!orbitNode && (name === 'Sun' || name === 'Kerbol')) { out.patches.push({ id: 'Kerbol', fields: f }); continue; }
         // new body: fill gaps from the template
         const def = {
-          id: name, name: name, parent: f.parent || null, pack: 'custom',
+          id: name, name: (kget(b, 'cbNameLater') || name), parent: f.parent || null, pack: 'custom',
           radius: f.radius !== undefined ? f.radius : tpl ? tpl.radius : undefined,
           gm: f.gm, atmo: f.atmo !== undefined ? f.atmo : tpl ? tpl.atmo : 0,
           rot: f.rot !== undefined ? f.rot : tpl ? tpl.rot : undefined,

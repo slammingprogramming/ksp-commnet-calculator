@@ -40,7 +40,7 @@
     const orbit = n.loc.elements ? n.loc.elements : Orb.orbitFromAltitudes(b, n.loc.pe, n.loc.ap, n.loc.i, n.loc.lan, n.loc.w, n.loc.phase);
     return {
       id: n.id, name: n.name, tracked: n.tracked, planned: n.planned, group: n.group, antennas: n.antennas,
-      loc: { type: 'orbit', body: b.id, orbit: orbit, patched: !!n.loc.patched },
+      loc: { type: 'orbit', body: b.id, orbit: orbit, patched: !!n.loc.patched, burns: n.loc.burns || [] },
     };
   }
 
@@ -259,6 +259,30 @@
       return h('div', { class: 'field' }, h('label', { text: label }), input);
     }
 
+    /** Planned burns of one orbiting vessel: impulsive, in the orbital frame; the vessel then follows its patched conics. */
+    function burnsEditor(n) {
+      const list = n.loc.burns || [];
+      const rows = list.map((bn, i) => {
+        const ut = h('input', { type: 'text', value: Orb.formatUT(bn.t), size: 16, spellcheck: 'false', 'aria-label': 'Burn time' });
+        ut.addEventListener('change', () => { const v = Orb.parseUT(ut.value); if (isFinite(v)) bn.t = v; ut.value = Orb.formatUT(bn.t); changed(); });
+        const dv = (key, label) => {
+          const inp = h('input', { type: 'number', step: 'any', value: bn[key] || 0, 'aria-label': label });
+          inp.addEventListener('input', () => { const v = parseFloat(inp.value); if (isFinite(v)) { bn[key] = v; changed(); } });
+          inp.addEventListener('change', () => rerender()); // refresh the total once the field is left
+          return h('label', { class: 'inline', style: 'color:var(--text)' }, label + ' ', inp);
+        };
+        return h('div', { class: 'row', style: 'align-items:center' }, ut, dv('prograde', 'prograde m/s'), dv('normal', 'normal m/s'), dv('radial', 'radial m/s'),
+          h('button', { class: 'btn small ghost', type: 'button', onclick: () => { list.splice(i, 1); if (!list.length) delete n.loc.burns; rerender(); } }, 'Remove'));
+      });
+      const total = list.reduce((s, b) => s + Math.hypot(b.prograde || 0, b.normal || 0, b.radial || 0), 0);
+      return h('div', { class: 'burns' },
+        h('div', { class: 'hint', text: 'Manoeuvres: impulsive burns at a time (prograde along the velocity, normal out of the orbital plane, radial away from the body). After the last burn the vessel follows its patched conics, so a transfer, an escape or a capture shows up in the Tracker and in every link calculation.' }),
+        ...rows,
+        h('div', { class: 'row' },
+          h('button', { class: 'btn small', type: 'button', onclick: () => { (n.loc.burns = n.loc.burns || []).push({ t: sc.ut + 3600, prograde: 0, normal: 0, radial: 0 }); rerender(); } }, '＋ Add a burn'),
+          list.length ? h('small', { class: 'hint', text: 'Total ' + total.toFixed(0) + ' m/s' }) : null));
+    }
+
     function nodeCard(n, idx) {
       const b = App.world.index.get(n.loc.body);
       const name = h('input', { type: 'text', value: n.name, maxlength: 40, 'aria-label': 'Name' });
@@ -316,7 +340,7 @@
             h('button', { class: 'btn small ghost danger', type: 'button', onclick: () => { sc.nodes.splice(idx, 1); rerender(); } }, 'Remove'))),
         h('div', { class: 'row' }, h('div', { class: 'field' }, h('label', { text: 'Location' }), type), h('div', { class: 'field' }, h('label', { text: n.loc.type === 'orbit' ? 'Orbits' : 'On' }), body), h('div', { class: 'field' }, h('label', { text: 'Or' }), tpl)),
         h('div', { class: 'row', style: 'margin-top:8px' }, fields),
-        summary, patched, msgs.length ? h('div', {}, msgs) : null,
+        summary, patched, n.loc.type === 'orbit' ? burnsEditor(n) : null, msgs.length ? h('div', {}, msgs) : null,
         h('div', { class: 'field', style: 'margin-top:8px' }, h('label', { text: 'Antennas' }), App.antennaEditor(n.antennas, changed)));
     }
 
@@ -432,4 +456,10 @@
 
   window.KSPScenario = { describeCauses: describeCauses, toSimNode: toSimNode, newNode: newNode, checkNode: checkNode, fromSaveVessel: fromSaveVessel, getSim: getSim, simNodes: simNodes, describeCause: describeCause };
   App.registerTab('scenario', 'Scenario', build, 'antennas');
+
+  // Tabs are built when first shown, so a share link (…#s=…) has to open the Scenario tab itself; its build then offers to load it.
+  if (/^#s=[A-Za-z0-9._-]+$/.test(location.hash)) {
+    const open = () => setTimeout(() => App.activate('scenario'), 0); // after main.js has started the app
+    if (document.readyState === 'complete') open(); else window.addEventListener('load', open);
+  }
 })();

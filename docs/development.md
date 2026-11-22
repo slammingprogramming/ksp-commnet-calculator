@@ -26,15 +26,19 @@ outside the project.
 | `js/world.js` | the body tree, body and surface positions at a time, distances, line-of-sight reports |
 | `js/trajectory.js` | patched conics: sphere-of-influence exits and entries, hand-over between orbits |
 | `js/sim.js` | the time-domain simulator: nodes, occlusion, paths, cause attribution, blackout scanner |
-| `js/planner.js` | the relay planner (diagnose, fix, prune, size, stress), coverage map, what-if, reach survey |
+| `js/planner.js` | the relay planner (diagnose, fix, budget, prune, size, stress), coverage map, what-if, reach survey |
+| `js/network.js` | network interconnectivity, redundancy (relay-loss tests) and ground-station set comparison |
+| `js/reentry.js` | plasma blackout rules and the entry trajectory on a body with an atmosphere |
+| `js/transfer.js` | Lambert solver and launch-window search between sibling bodies |
 | `js/share.js` | scenario export and import, share-link validation (all input is untrusted) |
 | `js/parsers.js` | ConfigNode parser, part `.cfg` import, Kopernicus planet-pack import, `persistent.sfs` reader |
-| `js/app.js`, `js/ui-*.js` | the interface: state, settings, the first tabs; Scenario, Tracker and Planner tabs |
+| `js/app.js`, `js/ui-*.js` | the interface: state, settings, the first tabs; Scenario, Tracker, Planner, Network, Reentry and Launch windows tabs |
+| `index.html`, `sw.js`, `manifest.webmanifest`, `icon.svg` | the page (with its Content-Security-Policy), and the offline cache and install files |
 | `scripts/` | dev server, mod-data check, screenshot generator, test runner |
 | `tools/ildump`, `tools/unityscan` | small readers used to verify the game's rules and data (see their READMEs for the legal note) |
 | `test/` | unit tests per module, plus `test/smoke/` for the browser smoke test |
 
-The pure-logic modules (`data`, `orbits`, `core`, `world`, `trajectory`, `sim`, `planner`, `parsers`, `share`) never touch the
+The pure-logic modules (`data`, `orbits`, `core`, `world`, `trajectory`, `sim`, `network`, `planner`, `reentry`, `transfer`, `parsers`, `share`) never touch the
 DOM and are tested in Node. The UI files are covered by the browser smoke test.
 
 ## Conventions
@@ -66,6 +70,14 @@ difference, and a monthly GitHub workflow runs it. Body data and stock-game fact
 
 The images in `docs/img/` come from `scripts/screenshots.js`: a fresh browser profile, dark theme, only the bundled
 example scenarios, so they contain no personal data. Regenerate them after any visible UI change and commit them with it.
+
+## Offline use and the page policy
+
+`sw.js` is a service worker that keeps the app's own files in a cache named after the version, so the site opens without a
+connection once visited (it is not registered on `file://` or on localhost, where a cache would hide your edits). Its file
+list must match what `index.html` loads and its version must equal `package.json`'s: `test/repo.test.js` checks both.
+The page also carries a Content-Security-Policy (`connect-src 'none'`, no inline scripts), so the browser itself refuses
+any network request the app might make by mistake.
 
 ## Releasing
 

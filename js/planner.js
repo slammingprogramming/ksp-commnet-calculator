@@ -90,13 +90,14 @@
 
   /* ---------- candidate builders ---------- */
 
-  function ringNodes(world, bodyId, n, alt, incDeg, lanDeg, phase0Deg, antennas, groupId, label) {
+  /** n relays equally spaced on one orbit: circular at `alt`, or elliptical from periapsis `alt` to apoapsis `ap` altitude. */
+  function ringNodes(world, bodyId, n, alt, incDeg, lanDeg, phase0Deg, antennas, groupId, label, ap) {
     const body = world.index.get(bodyId);
     const nodes = [];
     for (let k = 0; k < n; k++) {
       nodes.push({
         id: groupId + ':' + (k + 1), name: label + ' ' + (k + 1) + '/' + n, tracked: false, planned: true, group: groupId,
-        loc: { type: 'orbit', body: bodyId, orbit: Orb.orbitFromAltitudes(body, alt, alt, incDeg, lanDeg, 0, phase0Deg + (360 * k) / n) },
+        loc: { type: 'orbit', body: bodyId, orbit: Orb.orbitFromAltitudes(body, alt, ap || alt, incDeg, lanDeg, 0, phase0Deg + (360 * k) / n) },
         antennas: clone(antennas),
       });
     }
@@ -194,12 +195,16 @@
         }
         if (keo) configs.push({ n: n, inc: 0, alt: keo, keo: true });
       }
+      // elliptical orbits (low periapsis, high apoapsis): they spend most of their time high over one side, so fewer relays can cover the far side
+      if (alts.length > 1) {
+        for (const n of [1, 2, 3]) for (const inc of [0, 90]) configs.push({ n: n, inc: inc, alt: alts[0], ap: alts[alts.length - 1], keo: false });
+      }
       const span = Math.max(2 * Data.DAY, 3 * Math.min(body.rotPeriod, 20 * Data.DAY));
       const scored = [];
       let done = 0;
       for (const c of configs) {
         const phase0 = c.keo ? keoPhase(world, 0) : 0; // orbit epoch is UT 0
-        const nodes = ringNodes(world, bodyId, c.n, c.alt, c.inc, 0, phase0, ample, 'ring:' + bodyId, (c.keo ? 'Keostationary ' : '') + body.name + ' relay');
+        const nodes = ringNodes(world, bodyId, c.n, c.alt, c.inc, 0, phase0, ample, 'ring:' + bodyId, (c.keo ? 'Keostationary ' : '') + body.name + ' relay', c.ap);
         const sc = yield* quickScore(nodes, trackedBodies().has(bodyId) ? bodyId : null, 4, Math.min(span, 4 * Data.DAY));
         scored.push({ cfg: c, nodes: nodes, worst: sc.worst, mean: sc.mean });
         yield ++done / configs.length;
@@ -267,9 +272,9 @@
         }
         const cfg = best.c.cfg;
         proposal = {
-          family: 'ring', title: (cfg.keo ? 'Keostationary relay ring around ' : 'Relay ring around ') + world.index.get(cause.body).name,
+          family: 'ring', title: (cfg.keo ? 'Keostationary relay ring around ' : cfg.ap ? 'Elliptical relay orbits around ' : 'Relay ring around ') + world.index.get(cause.body).name,
           nodes: best.c.nodes, worst: best.worst, mean: best.mean, body: cause.body, cfg: cfg,
-          detail: cfg.n + ' relay' + (cfg.n > 1 ? 's' : '') + ' at ' + Core.formatDistance(cfg.alt) + ' altitude, ' + (cfg.inc === 0 ? 'equatorial' : 'polar') + ' orbit' + (cfg.n > 1 ? ', equally spaced' : ''),
+          detail: cfg.n + ' relay' + (cfg.n > 1 ? 's' : '') + ' at ' + (cfg.ap ? Core.formatDistance(cfg.alt) + ' × ' + Core.formatDistance(cfg.ap) + ' altitude' : Core.formatDistance(cfg.alt) + ' altitude') + ', ' + (cfg.inc === 0 ? 'equatorial' : 'polar') + ' orbit' + (cfg.n > 1 ? ', equally spaced' : ''),
         };
       }
       if (!proposal) continue;
@@ -330,7 +335,40 @@
       }
     }
 
+    // ---- fit to the budget (relay count, antenna mass, cost): drop the planned group that matters least until it fits ----
+    const limits = P.limits || {};
+    const usage = (ns) => {
+      let mass = 0, cost = 0;
+      for (const n of ns) if (n.planned) for (const a of n.antennas || []) { const r = lookup(a.id); if (r) { mass += (r.mass || 0) * a.count; cost += (r.cost || 0) * a.count; } }
+      return { count: ns.filter((n) => n.planned).length, mass: mass, cost: cost };
+    };
+    const over = (u) => (limits.maxRelays > 0 && u.count > limits.maxRelays) || (limits.maxMass > 0 && u.mass > limits.maxMass) || (limits.maxCost > 0 && u.cost > limits.maxCost);
+    let budget = null;
+    if (limits.maxRelays > 0 || limits.maxMass > 0 || limits.maxCost > 0) {
+      phase('Fitting the design to your budget');
+      const dropped = [];
+      let use = usage(working);
+      while (over(use) && working.some((n) => n.planned)) {
+        const gs = Array.from(new Set(working.filter((n) => n.planned).map((n) => n.group)));
+        let bestG = null, bestScore = -1;
+        for (const g of gs) {
+          const d = yield* diagnose(working.filter((n) => n.group !== g), true);
+          const score = worstUptime(d.res) + 0.001 * meanUptime(d.res);
+          if (score > bestScore) { bestScore = score; bestG = g; }
+        }
+        dropped.push({ group: bestG, count: working.filter((n) => n.group === bestG).length });
+        working = working.filter((n) => n.group !== bestG);
+        use = usage(working);
+      }
+      budget = { limits: limits, dropped: dropped, used: use, satisfied: !over(use) };
+    }
+
     const final = yield* diagnose(working);
+    // per-vessel uptime goals (by vessel name), checked against the finished design
+    const targets = Object.keys(P.targets || {}).map((name) => {
+      const src = final.res.sources.find((s) => s.name === name);
+      return src ? { name: name, target: P.targets[name], uptime: src.uptime, met: src.uptime >= P.targets[name] } : null;
+    }).filter(Boolean);
 
     phase('Checking the alternatives and stress-testing the design');
     // Cheapest possible fix: the "Enable Extra Groundstations" difficulty option.
@@ -355,7 +393,7 @@
     return {
       baseline: baseline, baselineCauses: baselineCauses, final: final.res, finalCauses: final.causes,
       steps: steps, advice: advice, sized: sized, pruned: pruned, extraStations: extraStations, stress: stress,
-      nodes: working, planned: working.filter((n) => n.planned), t0: t0, t1: t1, target: target,
+      nodes: working, planned: working.filter((n) => n.planned), t0: t0, t1: t1, target: target, budget: budget, targets: targets,
     };
   }
 
