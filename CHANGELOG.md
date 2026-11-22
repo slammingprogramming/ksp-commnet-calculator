@@ -2,7 +2,7 @@
 
 All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.1.1] - 2026-11-22
 
 ### Documentation
 - A full set of guides in `docs/` (getting started, calculators, scenarios, tracker, relay planner, game settings and
