@@ -62,7 +62,8 @@ test('community files exist and no private or agent file is part of the public t
 test('public docs and templates carry no personal information', () => {
   const files = ['README.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'index.html', 'package.json', 'docs/RESEARCH.md',
     'tools/ildump/README.md', 'tools/ildump/Program.cs', 'tools/unityscan/README.md', 'tools/unityscan/unityscan.py', 'CHANGELOG.md',
-    'scripts/check-mod-data.js', '.github/workflows/check-mod-data.yml', '.github/workflows/ci.yml'];
+    'scripts/check-mod-data.js', 'scripts/screenshots.js', '.github/workflows/check-mod-data.yml', '.github/workflows/ci.yml'];
+  for (const f of fs.readdirSync(path.join(root, 'docs')).filter((n) => n.endsWith('.md'))) files.push('docs/' + f);
   for (const f of fs.readdirSync(path.join(root, '.github/ISSUE_TEMPLATE'))) files.push('.github/ISSUE_TEMPLATE/' + f);
   for (const f of fs.readdirSync(path.join(root, 'js')).filter((n) => n.endsWith('.js'))) files.push('js/' + f);
   for (const f of files) {
@@ -78,4 +79,26 @@ test('the app version is the same in the app, package.json and the changelog', (
   assert.equal(Data.APP_VERSION, pkg.version);
   assert.ok(read('CHANGELOG.md').includes('## [' + pkg.version + ']'), 'CHANGELOG entry for ' + pkg.version);
   assert.ok(read('index.html').includes('id="app-version"'));
+});
+
+test('every relative link and image in the README and the guides resolves, and every screenshot is used', () => {
+  const docsDir = path.join(root, 'docs');
+  const pages = ['README.md'].concat(fs.readdirSync(docsDir).filter((n) => n.endsWith('.md')).map((n) => 'docs/' + n));
+  const used = new Set();
+  for (const page of pages) {
+    const text = read(page);
+    const targets = [];
+    for (const m of text.matchAll(/!?\[[^\]]*\]\(([^)\s]+)\)/g)) targets.push(m[1]);
+    for (const m of text.matchAll(/<img[^>]*\ssrc="([^"]+)"/g)) targets.push(m[1]);
+    for (const t of targets) {
+      if (/^(https?:|mailto:|#)/.test(t) || t.startsWith('../../')) continue; // ../../releases is a GitHub-relative link
+      const file = t.split('#')[0];
+      const abs = path.join(root, path.dirname(page), file);
+      assert.ok(fs.existsSync(abs), page + ' links to missing ' + t);
+      used.add(path.normalize(abs));
+    }
+  }
+  for (const f of fs.readdirSync(path.join(docsDir, 'img'))) {
+    assert.ok(used.has(path.join(docsDir, 'img', f)), 'docs/img/' + f + ' is not used by any page');
+  }
 });

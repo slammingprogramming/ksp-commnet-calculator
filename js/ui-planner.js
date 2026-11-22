@@ -348,7 +348,7 @@
 
       // extra stations
       if (plan.extraStations && (plan.extraStations.uptime > b0 + 0.01 || plan.extraStations.mean > plan.baseline.sources.reduce((q, s) => q + s.uptime, 0) / plan.baseline.sources.length + 0.01)) {
-        parts.push(h('div', { class: 'callout' }, h('strong', { text: 'Cheapest alternative: ' }), 'turning on the difficulty option “Enable Extra Groundstations” alone would give ' + pct(plan.extraStations.uptime) + ' uptime without launching anything (it adds five more Kerbin stations at the DSN rating, so Kerbin’s night side stops mattering).'));
+        parts.push(h('div', { class: 'callout' }, h('strong', { text: 'Cheapest alternative: ' }), 'turning on the difficulty option “Enable Extra Groundstations” alone would give ' + pct(plan.extraStations.uptime) + ' uptime without launching anything (it adds six more Kerbin stations at the DSN rating, so Kerbin’s night side stops mattering).'));
       }
 
       // stress

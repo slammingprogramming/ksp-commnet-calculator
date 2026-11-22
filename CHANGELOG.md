@@ -2,6 +2,19 @@
 
 All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Documentation
+- A full set of guides in `docs/` (getting started, calculators, scenarios, tracker, relay planner, game settings and
+  mods, how the model works, FAQ, development) with the screenshots next to the text they illustrate. The README is now a
+  short overview that links to them.
+- `scripts/screenshots.js` regenerates the screenshots; a test checks that every link and image in the guides resolves
+  and that every screenshot is used. The release zip now includes `docs/`.
+
+### Fixed
+- The extra ground stations are six (the five anomaly dishes and Baikerbanur); two texts said five.
+- The Help tab gives the date of the latest mod-data check.
+
 ## [1.1.0] - 2026-11-21
 
 ### Corrected (all read from the game's own files)

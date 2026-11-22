@@ -1138,7 +1138,7 @@
         h('h3', { text: 'Occlusion, orbits and the planner' }),
         h('p', {}, 'The Scenario, Tracker and Relay planner tabs simulate real orbits (two-body Kepler motion for every body and vessel, Kerbin’s rotation for the ground stations). Every body is a sphere of radius (body radius × occlusion modifier), using the atmosphere modifier for bodies with an atmosphere; a link is blocked when its straight line touches a sphere. Kerbol is included, which is what causes conjunction blackouts.'),
         h('ul', {},
-          h('li', {}, 'With only the Kerbal Space Center as a DSN station, Kerbin’s own night side cuts a distant link for hours every day. The five extra ground stations (a difficulty option) fix that; the planner tells you what that alone would achieve.'),
+          h('li', {}, 'With only the Kerbal Space Center as a DSN station, Kerbin’s own night side cuts a distant link for hours every day. The six extra ground stations (a difficulty option) fix that; the planner tells you what that alone would achieve.'),
           h('li', {}, 'The planner attributes every outage to the body that blocked it, fixes the cause (relay ring around that body, or solar relays 60° ahead/behind Kerbin for conjunctions), re-simulates, drops fixes made redundant by later ones, and stress-tests the result on every difficulty preset.'),
           h('li', {}, 'Solar relays in Kerbin’s orbit keep their position relative to Kerbin forever, so that fix does not expire; local rings are verified over the look-ahead period you choose.'))),
       h('div', { class: 'card' },
@@ -1161,7 +1161,7 @@
         h('ul', {},
           h('li', {}, 'Inspired by Poodmund’s “CommNet Signal Strength Calculator & Antenna Selector” spreadsheet, which showed how useful a CommNet calculator is. No data was copied from it: antenna values come from the games’ and mods’ own part configs, and body distances are computed from the orbits.'),
           h('li', {}, 'Formulas, DSN levels and the difficulty table: KSP Wiki “CommNet” page.'),
-          h('li', {}, 'Stock and Breaking Ground antennas: KSP ' + Data.GAME_VERSION + ' part configs. Mod antennas: the mods’ current GitHub part configs (ReStock+, Near Future Exploration, CommNet Antennas Extension, DMagic Orbital Science, JX2Antenna, ProbesPlus), checked 2026-09-29.'),
+          h('li', {}, 'Stock and Breaking Ground antennas: KSP ' + Data.GAME_VERSION + ' part configs. Mod antennas: the mods’ current GitHub part configs (ReStock+, Near Future Exploration, CommNet Antennas Extension, DMagic Orbital Science, JX2Antenna, ProbesPlus), checked by script 2026-11-21.'),
           h('li', {}, 'Bodies: KSP Wiki infoboxes; Outer Planets Mod configs (Poodmund/Outer-Planets-Mod). Ground stations: KSP Wiki “List of bases on Kerbin”.'),
           h('li', {}, 'Licensed AGPL-3.0-or-later. The source is available from the link in the page footer.'))),
       supportCard()));
