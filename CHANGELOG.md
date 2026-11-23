@@ -2,6 +2,44 @@
 
 All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-11-22
+
+### Added
+- **Career tab:** load a career from `persistent.sfs` (funds, science, reputation, difficulty, researched tech, bought parts, facility
+  levels, contracts) or start from a difficulty preset. A money, science and reputation list with the running balance, the lowest
+  point and the first day you could not afford a step. **Facility upgrades** with the game's real prices and what each level allows
+  (launch mass, part count, contracts, strategies, crew, tracking, research limits). A **tech tree plan** to any goal nodes (research
+  order, science, part prices, the Research & Development limit). **Science worth** per experiment, situation and body. Contracts from the save.
+- **Missions tab:** import `.craft` files for price, mass, recoverable value and stage-by-stage delta-v (fuel reach, decouplers,
+  boosters that burn out first). Build a route from legs (launch, transfer with real Lambert windows or a Hohmann transfer to a
+  moon, landing, ascent, return from a moon, plane change, custom burn) with templates for the Mun, Minmus and Duna. A verdict
+  with delta-v needed against available, facility and research checks with one-click upgrade planning, recovery value and contract
+  rewards, and a button that books the mission on the money list.
+- Data read from the game: the tech tree, ~480 part prices, masses, engines and tanks, science tables, contract base values,
+  strategies, facility upgrade prices and limits, recovery rules, difficulty presets (`scripts/build-career-data.js`, numbers only).
+  `tools/unityscan` now also reads facility prices and per-body science multipliers.
+- The config parser keeps the name of a node that has a trailing comment (`ARM // Asteroid Recovery Contracts`).
+- Documentation: guides for the Career and Missions tabs; research notes section 8.
+- **Milestones ("World First"):** the reward of every first (orbit, landing, flyby, escape, flag, spacewalk, base and the rest) on every
+  body, from the game's own formula, with your difficulty gain and strategies, marked off from the milestones already in your save.
+- **Strategies:** the eleven strategies with their price at a commitment, what they convert or multiply, the Administration limit,
+  and their effect on milestone income.
+- **Landing tab:** finds landing sites by how much tilt you can land on and stay on, latitude, height, biome, distance from a point and
+  biomes within hopping reach, on 15 bodies; a map of the biomes with the candidates; what a lander can measure there, the Breaking
+  Ground deployed instruments (with the game's rates and caps) and the surface rocks that appear in that biome. Built from the game's
+  height and biome maps (`tools/unityscan --terrain`, `scripts/build-terrain-data.js`); slopes are regional, not ground level, and the
+  tab says so.
+- **Biome counts** per body, and the science tables mark which experiments repeat in every biome.
+- **Fuel ducts:** delta-v now counts fuel lines (a duct feeds the part at its far end from the part it sits on), drains boosters
+  first (by the stage they separate in) and keeps solid fuel in its own part, so asparagus staging comes out right.
+
+### Fixed
+- Planet science tables no longer list asteroid and comet samples.
+
+### Notes
+- The reward formula, strategy conversion and fuel-duct rules were read from the game's code. They were not compared with a played save.
+  Interval records (altitude, speed, distance, depth) are not in the milestone list.
+
 ## [1.2.0] - 2026-11-22
 
 ### Added

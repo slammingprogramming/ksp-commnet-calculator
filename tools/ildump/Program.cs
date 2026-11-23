@@ -129,7 +129,10 @@ class P
                 case OperandType.InlineSwitch:
                     {
                         int n = BitConverter.ToInt32(il, i); i += 4;
-                        i += 4 * n; operand = "switch(" + n + ")"; break;
+                        int baseOff = i + 4 * n;
+                        var targets = new System.Text.StringBuilder();
+                        for (int k = 0; k < n; k++) { int d = BitConverter.ToInt32(il, i + 4 * k); targets.Append(k == 0 ? "" : ",").Append("IL_").Append((baseOff + d).ToString("X4")); }
+                        i += 4 * n; operand = "switch(" + n + ") [" + targets + "]"; break;
                     }
                 default: { int t = BitConverter.ToInt32(il, i); i += 4; operand = Resolve(t); break; }
             }

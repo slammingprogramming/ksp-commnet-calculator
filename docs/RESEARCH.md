@@ -190,3 +190,92 @@ reachability matrix and the difficulty modifiers; the implementation and data ar
   simplified.
 * The Finder and the Link & relay chain remain range calculators; they report the line-of-sight windows between the two
   bodies' centres but not a vessel hiding behind its own planet (use the Tracker for that).
+
+## 8. Career and finance (read from the game, session of 2026-11-22)
+
+Used by the Career and Missions tabs. Everything here was read from the user's own KSP 1.12.5 install: configs under
+`GameData`, scene and prefab files with `tools/unityscan`, and the code of `Assembly-CSharp.dll` with `tools/ildump`.
+
+**Facility prices** (the `UpgradeableFacility` objects in the space-centre scene files; each has three level records and the
+first float of a record is its `levelCost`; record 0 is the level-1 base cost, not an upgrade). Level 2 and 3 prices:
+Launch Pad, Runway, Mission Control, Astronaut Complex 75,000 and 282,000; Tracking Station, Administration 150,000 and
+563,000; Vehicle Assembly Building, Spaceplane Hangar 225,000 and 845,000; Research & Development 451,000 and 1,690,000.
+The Launch Pad has a second copy in a shared prefab file with 50,000 for level 2; the scene copy (75,000) is used because it is
+the one the space-centre scene loads and it matches the pattern of the other buildings (flag as less certain).
+
+**Facility effects** are methods of `GameVariables`; each compares the normalised level (0, 0.5, 1 for levels 1 to 3) with
+thresholds. Results for levels 1, 2, 3: part count 30 / 255 / unlimited (`GetPartCountLimit`), craft mass 18 t / 140 t /
+unlimited (`GetCraftMassLimit`), active contracts 2 / 7 / unlimited, active strategies 1 / 3 / 5 with a commitment of 25% / 60% /
+100% (`GetStrategyCommitRange`), active crew 5 / 12 / unlimited, tracked objects 0 / 8 / unlimited, patches ahead 0 / 2 / all,
+research node cost limit 100 / 500 / unlimited science, data-to-science ratio 0.4 / 0.8 / 1.0. `UnlockedFlightPlanning` is
+true above 0.4 (read on Mission Control, facility enum value 3), `ManeuverToolAvailable` above 0.75 (Tracking Station, value 6).
+The facility enum order is Administration 0, Astronaut Complex 1, Launch Pad 2, Mission Control 3, R&D 4, Runway 5, Tracking
+Station 6, Spaceplane Hangar 7, VAB 8.
+
+**Recovery** (`VesselRecovery.OnVesselRecovered`): the funds share is `lerp(0.98, 0.1, d / (pi R))` with `d` the great-circle
+distance of the landing to the space centre and `R` Kerbin's radius; a vessel whose `landedAt` contains "KSC" gets 0.98, and one
+whose `landedAt` contains "Runway" or "LaunchPad" gets 1.0. (Strategy effects can shift the two ends through
+`RecoveryMinimumDelta` and `RecoveryMaximumDelta`; they are not modelled.) `GameVariables.partRecoveryValueFactor` (0.9) and
+`resourceRecoveryValueFactor` (0.95) exist but no method calls them: they have no effect in 1.12.5.
+
+**Difficulty presets** (`GameParameters.SetDifficultyPresets`): Easy 250,000 funds, gains ×2, funds and reputation losses ×0.5,
+reputation penalty for declined contracts 0; Normal 25,000, all ×1, declined ×1; Moderate 15,000, gains ×0.9, losses ×1.5,
+declined ×2; Hard 10,000, gains ×0.6, losses ×2, declined ×3.
+
+**Contracts:** the saved `values` string is, in order, expiry time, deadline time, funds advance, funds completion, funds failure,
+science, reputation completion, reputation failure, then four dates (`Contract.Save`). Base values per contract type come from
+`Contracts/Contracts.cfg`; the prestige factors (1, 1.25, 1.5) and the other multipliers are the constructor defaults of `GameVariables`.
+
+**Science:** per-body multipliers are nine consecutive floats in each `CelestialBody` prefab (landed, splashed, flying low,
+flying high, in space low, in space high, recovery, flying altitude threshold, space altitude threshold), read by `tools/unityscan`.
+Experiment base values and caps are in `Resources/ScienceDefs.cfg`; transmit efficiency is each part module's `xmitDataScalar`
+(default 0.5). The number of biomes per body is not read.
+
+**Parts and rockets:** `cost` in a part's cfg is the price with a full set of resources, so the dry price subtracts
+`maxAmount x unitCost` per resource (verified: 22 of 28 of the user's saved rockets match the game's stored `totalCost` to the
+unit; the others had stale saved totals or a renamed legacy part). The game's stored `totalMass` is lower than the sum of
+part masses by 0.094 t per crew seat; the app applies the same rule. `ModuleDecouple` / `ModuleAnchoredDecoupler` name the
+attachment that separates in `explosiveNodeID` (`srf` = the part leaves with its subtree).
+
+**Milestones ("World First")** (`ProgressNode.AwardProgressStandard` calls `ProgressUtilities.WorldFirstStandardReward(passive = true, currency, type, body)`):
+reward = `Progression.BaseReward` (80,000 funds, 8 science, 16 reputation in `Contracts.cfg`) × `PassiveBaseRatio` (0.2) ×
+`ScoreProgressType(type, body)` × `OutlierMilestoneMultiplier` (1.5) when `OutlierWorldFirstContract` is true × (for the three
+currencies) the contract factor of the tier from `ProgressTypePrestige(type, null)` × the difficulty gain, and for funds with a body
+× (1 + (`GetContractDestinationWeight(body)` − 1) × `PassiveBodyRatio` (0.3)), where the weight is the body's science `RecoveryValue`
+(× `contractDestinationWeight` = 1); the result goes through `Mathf.Round`. The score per type, at the home planet / elsewhere
+(from the jump table of `ScoreProgressType`): orbit 1 / 0.8, flyby 0.8 / 1, landing 0.1 / 1.5, escape 1.1 / 0.6, splashdown 0.3 / 1.5,
+suborbit 0.8 / 1, flight 0.5 / 1.2, science, flag and surface EVA 0.2 / 0.6, spacewalk 0.6, orbit return 1 / 0.8, flyby return 0.8 / 1,
+landing return 0.1 / 1.5, rendezvous 1 / 0.8, docking, crew transfer, base construction, point of interest and tower buzz 0.3 / 0.8,
+station construction and reach space 0.8, first launch and crew recovery 0.1, and the four records 2 (they pay by interval, not
+here). Outliers: base and station construction, and a landing return on a body with an atmosphere. The tier (`ProgressTypePrestige`)
+scores the type as at home (it passes no body): at or below the home flight score (0.5) trivial, below the home orbit score (1)
+significant, else exceptional; the outliers are exceptional. The factors are `contractPrestigeTrivial/Significant/Exceptional`
+(1, 1.25, 1.5). The achievement classes that award each type were mapped from the 25 callers of `AwardProgressStandard`. Not
+compared with a played save.
+
+**Strategies** (`Strategies.cfg`, `Strategies.Effects.*`): the slider value `Factor` (0..1) interpolates every `min`/`max` pair
+(`ParentLerp`). `CurrencyConverter` takes `share` of the input amount of each query whose reason is in `AffectReasons` and pays
+`share × amount × rate` in the output currency; `CurrencyOperation` multiplies (or adds to) the currency for the listed reasons;
+`ValueModifier` changes `RecoveryMinimumDelta`/`RecoveryMaximumDelta`. Effects work on the original amounts of the query.
+
+**Fuel ducts** (`CompoundParts.CModuleFuelLine`, `Part.RequestFuel`): a duct is a surface-attached compound part; when its target is set it
+adds itself to the target part's `fuelLookupTargets`, and the target's fuel request is also sent to the duct, which reaches its own
+parent: the part the duct sits on feeds the part at its far end. In a `.craft` the target is `PARTDATA.tpersID` (a persistent id).
+Tank drain order: `Part.GetResourcePriority` = (inverse stage of the part, or of its parent) × 10 + `resourcePriorityOffset`; the app uses
+the saved `sepI` (the stage a part separates in) for the first. `SolidFuel` has `flowMode = NO_FLOW` (its own part only).
+
+**Terrain and biomes**: every body's map data are `MapSO` (height, `PQSMod_VertexHeightMap`: height = `heightMapOffset` +
+`heightMapDeformity` × pixel/255) and `CBAttributeMapSO` (biomes: pixel colours matched to the attribute table that follows the
+pixels; names and the number of biomes per body: Bop 5, Dres 8, Duna 14, Eeloo 11, Eve 15, Gilly 3, Ike 8, Kerbin 11, Laythe 10,
+Minmus 9, Moho 12, Mun 17, Pol 4, Tylo 9, Vall 9) in `sharedassets9.assets`. Mapping from a direction to a pixel
+(`PQS` vertex build): u = longitude / (2π) in the generator's frame, v = latitude / π + 0.5; the geographic longitude of the game relates
+to it by u = 0.25 − lon / 360 (found by matching ground stations: ten sites, all on the right biomes). Bodies with a height map: Kerbin,
+Mun, Duna, Eve, Laythe, Moho, Dres, Eeloo, Tylo, Vall; the others are made by noise modifiers only. The generator adds noise on top of
+the maps, which is not read.
+
+**Breaking Ground** (`GameData/SquadExpansion/Serenity`): four deployed instruments with `baseValue` (per hour, except the seismometer which pays by
+impact energy) and `scienceCap`; `ScienceTimeDelay` 60 s; a `DIMINSHINGRETURNS` table (1, 0.2, 0.35, 0.45, 0.5 by the number of the same instrument on a
+body; how `DeployedScience.GetDiminishingReturnsMultiplier` is applied to the cap and rate was not worked out); `rocsdef.cfg` lists each rock, its
+bodies and biomes and its frequency.
+
+**Not read:** kerbal hiring cost curve details, the interval records, the Space Center biomes, and the noise the terrain generator adds.

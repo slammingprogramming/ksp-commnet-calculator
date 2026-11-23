@@ -193,6 +193,71 @@ async function main() {
       await shot('#tab-tracker', 'tracker-light');
       await page.emulateMedia({ colorScheme: 'dark' });
     }
+
+    if (want('career')) {
+      // a made-up career (nothing from a real save) and a two-stage lander, for the Career and Missions guides
+      const fs = require('node:fs');
+      const os = require('node:os');
+      await page.evaluate(() => localStorage.clear());
+      await page.reload();
+      await page.waitForSelector('#tabs button');
+      const sfs = path.join(os.tmpdir(), 'ksp-shots-career.sfs');
+      const tech = ['start', 'basicRocketry', 'engineering101', 'survivability', 'generalRocketry'];
+      fs.writeFileSync(sfs, 'GAME\n{\n\tTitle = Example career (CAREER)\n\tMode = CAREER\n\tPARAMETERS\n\t{\n\t\tCAREER\n\t\t{\n\t\t\tStartingFunds = 25000\n\t\t\tFundsGainMultiplier = 1\n\t\t\tScienceGainMultiplier = 1\n\t\t\tRepGainMultiplier = 1\n\t\t\tFundsLossMultiplier = 1\n\t\t\tRepLossMultiplier = 1\n\t\t\tRepLossDeclined = 1\n\t\t}\n\t}\n' +
+        '\tSCENARIO\n\t{\n\t\tname = Funding\n\t\tfunds = 118000\n\t}\n\tSCENARIO\n\t{\n\t\tname = Reputation\n\t\trep = 64\n\t}\n' +
+        '\tSCENARIO\n\t{\n\t\tname = ResearchAndDevelopment\n\t\tsci = 83\n' + tech.map((t) => '\t\tTech\n\t\t{\n\t\t\tid = ' + t + '\n\t\t\tstate = Available\n\t\t}\n').join('') + '\t}\n' +
+        '\tSCENARIO\n\t{\n\t\tname = ScenarioUpgradeableFacilities\n\t\tSpaceCenter/LaunchPad\n\t\t{\n\t\t\tlvl = 0\n\t\t}\n\t\tSpaceCenter/MissionControl\n\t\t{\n\t\t\tlvl = 0.5\n\t\t}\n\t}\n' +
+        '\tSCENARIO\n\t{\n\t\tname = ContractSystem\n\t\tCONTRACTS\n\t\t{\n\t\t\tCONTRACT\n\t\t\t{\n\t\t\t\ttype = SatelliteContract\n\t\t\t\tstate = Active\n\t\t\t\tbody = Kerbin\n\t\t\t\tvalues = 1,2,16000,41000,12000,3,10,5,0,0,999,0\n\t\t\t}\n\t\t\tCONTRACT\n\t\t\t{\n\t\t\t\ttype = ExplorationContract\n\t\t\t\tstate = Offered\n\t\t\t\tbody = Mun\n\t\t\t\tvalues = 1,2,30000,66000,30000,6,12,6,0,0,999,0\n\t\t\t}\n\t\t}\n\t}\n}\n');
+      await tab('career');
+      await page.setInputFiles('input[aria-label="KSP career save file"]', sfs);
+      await page.waitForSelector('#tab-career >> text=Loaded “Example career (CAREER)”', { timeout: 10000 });
+      await page.selectOption('#tab-career select[aria-label="Goal node"]', 'advRocketry');
+      await page.selectOption('#tab-career select[aria-label="Goal node"]', 'landing');
+      await page.click('#tab-career button:has-text("Add the plan to the money list")');
+      await page.click('#tab-career tr:has-text("Launch Pad") button:has-text("Plan")');
+      await page.click('#tab-career tr:has-text("Satellite") button:has-text("Plan reward")');
+      await page.waitForTimeout(500);
+      await slice('#tab-career', 'career', 'start', '>Money, science and reputation over time');
+      const part = (id, i, o) => {
+        o = o || {};
+        let t = 'PART\n{\n\tpart = ' + id + '_' + (1000 + i) + '\n\tistg = ' + (o.istg === undefined ? -1 : o.istg) + '\n\tmodCost = 0\n\tmodMass = 0\n';
+        for (const l of o.links || []) t += '\tlink = ' + l + '\n';
+        for (const a of o.att || []) t += '\tattN = ' + a + '\n';
+        for (const k of Object.keys(o.res || {})) t += '\tRESOURCE\n\t{\n\t\tname = ' + k + '\n\t\tamount = ' + o.res[k] + '\n\t\tmaxAmount = ' + o.res[k] + '\n\t}\n';
+        return t + '}\n';
+      };
+      const tank = { LiquidFuel: 180, Oxidizer: 220 };
+      const craftFile = path.join(os.tmpdir(), 'Example Lander.craft');
+      fs.writeFileSync(craftFile, 'ship = Example Lander\nversion = 1.12.5\ntype = VAB\n' + part('mk1pod.v2', 0, { links: ['fuelTank_1001'] }) +
+        part('fuelTank', 1, { links: ['liquidEngine_1002'], res: tank }) + part('liquidEngine', 2, { istg: 0, links: ['Decoupler_1_1003'] }) +
+        part('Decoupler_1', 3, { istg: 0, links: ['fuelTank_1004'], att: ['bottom,fuelTank_1004_0|0|0'] }) +
+        part('fuelTank', 4, { links: ['fuelTank_1005'], res: tank }) + part('fuelTank', 5, { links: ['liquidEngine_1006'], res: tank }) + part('liquidEngine', 6, { istg: 1 }));
+      await tab('missions');
+      await page.setInputFiles('input[aria-label="Rocket files"]', craftFile);
+      await page.waitForSelector('#tab-missions >> text=1 rocket(s) read', { timeout: 10000 });
+      await page.click('#tab-missions button:has-text("+ Mun landing and return")');
+      await page.waitForSelector('#tab-missions >> text=Delta-v budget', { timeout: 10000 });
+      await page.waitForTimeout(400);
+      await slice('#tab-missions', 'missions', 'Route', '>What it needs');
+    }
+    if (want('landing')) {
+      await page.evaluate(() => localStorage.clear());
+      await page.reload();
+      await page.waitForSelector('#tabs button');
+      await tab('landing');
+      await page.selectOption('#tab-landing select[aria-label="Body"]', 'Duna');
+      await page.fill('#tab-landing input[aria-label="Landing tilt"]', '8');
+      await page.press('#tab-landing input[aria-label="Landing tilt"]', 'Tab');
+      await page.fill('#tab-landing input[aria-label="Maximum latitude"]', '40');
+      await page.press('#tab-landing input[aria-label="Maximum latitude"]', 'Tab');
+      await page.selectOption('#tab-landing select[aria-label="Rank by"]', 'variety');
+      await page.click('#tab-landing button:has-text("Find sites")');
+      await page.waitForSelector('#landing-results tbody tr', { timeout: 15000 });
+      await page.click('#landing-results tbody tr:first-child button:has-text("Details")');
+      await page.waitForSelector('#tab-landing >> text=Lander experiments here', { timeout: 10000 });
+      await page.waitForTimeout(400);
+      await slice('#tab-landing', 'landing', 'Landing sites', 'end');
+    }
   } finally {
     await browser.close();
     server.kill();

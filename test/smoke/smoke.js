@@ -54,7 +54,7 @@ async function main() {
     await page.goto(base);
     await page.waitForSelector('#tabs button');
     const tabs = await page.$$eval('#tabs button', (bs) => bs.map((b) => b.id));
-    assert.deepEqual(tabs, ['tabbtn-chain', 'tabbtn-finder', 'tabbtn-reach', 'tabbtn-scenario', 'tabbtn-tracker', 'tabbtn-planner', 'tabbtn-network', 'tabbtn-reentry', 'tabbtn-transfer', 'tabbtn-antennas', 'tabbtn-help']);
+    assert.deepEqual(tabs, ['tabbtn-chain', 'tabbtn-finder', 'tabbtn-reach', 'tabbtn-scenario', 'tabbtn-tracker', 'tabbtn-planner', 'tabbtn-network', 'tabbtn-reentry', 'tabbtn-transfer', 'tabbtn-career', 'tabbtn-missions', 'tabbtn-landing', 'tabbtn-antennas', 'tabbtn-help']);
     for (const id of tabs) {
       await page.click('#' + id);
       const panel = '#tab-' + id.replace('tabbtn-', '');
@@ -176,6 +176,55 @@ async function main() {
     await page.click('#tabbtn-scenario');
     assert.ok(await page.locator('select[aria-label="Add a vessel from the save"] option:has-text("Smoke relay")').count());
     step('save import');
+
+    // Career and Missions: load a career, plan research, import a rocket, build a mission and put it on the money list
+    const careerFile = path.join(os.tmpdir(), 'ksp-smoke-career.sfs');
+    fs.writeFileSync(careerFile, 'GAME\n{\n\tTitle = Smoke career (CAREER)\n\tMode = CAREER\n\tSCENARIO\n\t{\n\t\tname = Funding\n\t\tfunds = 90000\n\t}\n\tSCENARIO\n\t{\n\t\tname = ResearchAndDevelopment\n\t\tsci = 60\n\t\tTech\n\t\t{\n\t\t\tid = start\n\t\t\tstate = Available\n\t\t}\n\t}\n}\n');
+    await page.click('#tabbtn-career');
+    await page.setInputFiles('input[aria-label="KSP career save file"]', careerFile);
+    await page.waitForSelector('#tab-career >> text=Loaded “Smoke career (CAREER)”', { timeout: 10000 });
+    await page.selectOption('#tab-career select[aria-label="Goal node"]', 'generalRocketry');
+    await page.waitForSelector('#tab-career >> text=Add the plan to the money list', { timeout: 10000 });
+    const part = (id, i, o) => {
+      o = o || {};
+      let t = 'PART\n{\n\tpart = ' + id + '_' + (1000 + i) + '\n\tistg = ' + (o.istg === undefined ? -1 : o.istg) + '\n\tmodCost = 0\n\tmodMass = 0\n';
+      for (const l of o.links || []) t += '\tlink = ' + l + '\n';
+      for (const k of Object.keys(o.res || {})) t += '\tRESOURCE\n\t{\n\t\tname = ' + k + '\n\t\tamount = ' + o.res[k] + '\n\t\tmaxAmount = ' + o.res[k] + '\n\t}\n';
+      return t + '}\n';
+    };
+    const craftFile = path.join(os.tmpdir(), 'Smoke Rocket.craft');
+    fs.writeFileSync(craftFile, 'ship = Smoke Rocket\nversion = 1.12.5\ntype = VAB\n' + part('mk1pod.v2', 0, { links: ['fuelTank_1001'] }) +
+      part('fuelTank', 1, { links: ['liquidEngine_1002'], res: { LiquidFuel: 180, Oxidizer: 220 } }) + part('liquidEngine', 2, { istg: 0 }));
+    await page.click('#tabbtn-missions');
+    await page.setInputFiles('input[aria-label="Rocket files"]', craftFile);
+    await page.waitForSelector('#tab-missions >> text=1 rocket(s) read', { timeout: 10000 });
+    await page.click('#tab-missions button:has-text("+ Reach orbit")');
+    await page.waitForSelector('#tab-missions >> text=Delta-v budget', { timeout: 10000 });
+    assert.match(await page.innerText('#tab-missions'), /Launch to 80 km orbit of Kerbin — 34\d\d m\/s/);
+    await page.click('#tab-missions button:has-text("Add to the money list")');
+    await page.click('#tabbtn-career');
+    await page.waitForSelector('#tab-career table tbody tr:has-text("Kerbin orbit: Launch (rocket)")', { timeout: 10000 });
+    step('career and missions');
+
+    // Milestones and strategies on the Career tab, then the Landing tab: find sites, pick one, see what a lander can measure there
+    await page.click('#tab-career summary:has-text("Milestones")');
+    await page.waitForSelector('#tab-career tr:has-text("Reach orbit") button:has-text("Plan reward")', { timeout: 10000 });
+    await page.click('#tab-career summary:has-text("Strategies")');
+    await page.waitForSelector('#tab-career input[aria-label="Leadership Initiative active"]', { timeout: 10000 });
+    await page.check('#tab-career input[aria-label="Leadership Initiative active"]');
+    await page.waitForSelector('#tab-career input[aria-label="Leadership Initiative commitment percent"]', { timeout: 10000 });
+    step('milestones and strategies');
+    await page.click('#tabbtn-landing');
+    await page.selectOption('#tab-landing select[aria-label="Body"]', 'Duna');
+    await page.fill('#tab-landing input[aria-label="Landing tilt"]', '8');
+    await page.press('#tab-landing input[aria-label="Landing tilt"]', 'Tab');
+    await page.click('#tab-landing button:has-text("Find sites")');
+    await page.waitForSelector('#landing-results tbody tr', { timeout: 15000 });
+    await page.click('#landing-results tbody tr:first-child button:has-text("Details")');
+    await page.waitForSelector('#tab-landing >> text=Lander experiments here', { timeout: 10000 });
+    assert.match(await page.innerText('#tab-landing'), /Deployed instruments/);
+    assert.match(await page.innerText('#tab-landing'), /Surface rocks/);
+    step('landing sites');
 
     // Planner budget fields are there and keep their value
     await page.click('#tabbtn-planner');

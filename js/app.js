@@ -92,6 +92,9 @@
       network: { horizon: 426 * 21600, stations: {}, custom: [] },
       reentry: { body: 'Kerbin', mode: 'orbit', pe: 30000, ap: 12000000, vinf: 1000, speed: 2300, angle: 6, ballistic: 400, link: 0, heat: 1 },
       planner: { horizon: 2, target: 99.5, minSignal: 20, designHard: false, robust: true, skip: {}, targets: {}, limits: { relays: 0, mass: 0, cost: 0 }, whatif: { body: 'Kerbin', n: 3, alt: '2863 km', inc: 0, antennas: [{ id: 'stock:RelayAntenna100', count: 1 }] } },
+      career: { state: null, ledger: [], goals: [], body: 'Mun', nextId: 1, title: '', draft: null, open: {} },
+      missions: { crafts: [], list: [], sel: 0, nextId: 1 },
+      landing: { body: 'Mun', landTilt: 10, stayTilt: 5, share: 0.5, maxLat: 90, minAlt: null, maxAlt: null, dry: true, biomes: [], avoid: [], near: null, nearKm: 500, varietyKm: 100, rank: 'flat', pick: null, open: {} },
       saveInfo: null,
       ui: { tab: 'chain' },
     };
@@ -1191,7 +1194,7 @@
         h('h3', { text: 'Tips' }),
         h('ul', {},
           h('li', {}, 'Type distances with units: 35 Gm, 12000 km, 700 Mm, 1.5e10.'),
-          h('li', {}, 'The Network tab shows who can reach whom over time and which relay everything depends on; the Reentry tab shows where a landing loses signal to plasma; Launch windows finds when to leave for another planet.'),
+          h('li', {}, 'The Network tab shows who can reach whom over time and which relay everything depends on; the Reentry tab shows where a landing loses signal to plasma; Launch windows finds when to leave for another planet. The Career tab plans money, research, milestones and facility upgrades from your save; the Missions tab checks a rocket (import its .craft file) against a route; the Landing tab finds landing sites by tilt, latitude, height and biome and lists the science to do there.'),
           h('li', {}, 'The tracker moves by dragging and zooms by scrolling or pinching; on a keyboard use + − 0 and W A S D.'),
           h('li', {}, 'A “Find antennas” button appears beside any weak hop; it opens the finder with that hop filled in.'),
           h('li', {}, 'Load your persistent.sfs to copy your real difficulty, Tracking Station level, and (on the Scenario tab) your actual vessels with their orbits and antennas.'),

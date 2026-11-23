@@ -212,3 +212,12 @@ input.bad { border-color: var(--bad); }
 
 /* launch windows: the cheapest row */
 tr.best td { font-weight: 600; color: var(--accent); }
+
+ul.plain { list-style: none; padding-left: 0; margin: 6px 0 0; }
+ul.plain li { padding: 2px 0; }
+
+/* Landing tab */
+tr.sel td { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+tr.dim td { opacity: 0.55; }
+.checks { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 4px 0; }
+.legend .chip { margin-right: 10px; font-size: 0.85em; }

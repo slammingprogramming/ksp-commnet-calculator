@@ -39,12 +39,13 @@
         stack[stack.length - 1].vals.push([key, value.trim(), comment]);
         pending = null;
       } else if (brace) {
-        const node = { name: raw.replace(/\{\s*$/, '').trim(), vals: [], children: [] };
+        const node = { name: raw.replace(/\{\s*$/, '').replace(/\s*\/\/.*$/, '').trim(), vals: [], children: [] };
         stack[stack.length - 1].children.push(node);
         stack.push(node);
         pending = null;
       } else {
-        pending = raw;
+        // a node name may carry a trailing comment ("ARM // Asteroid Recovery Contracts"); the name is what is before it
+        pending = raw.replace(/\s*\/\/.*$/, '');
       }
     }
     return root;
@@ -265,5 +266,77 @@
     return out;
   }
 
-  return { parseConfig: parseConfig, parseAntennaCfg: parseAntennaCfg, parseSave: parseSave, parseKopernicus: parseKopernicus };
+  /** Career state from a persistent.sfs: funds, science, reputation, facility levels, researched tech, bought parts,
+   *  contracts, strategies and the difficulty multipliers. Fields the save does not have come back null. */
+  function parseCareer(text) {
+    const tree = parseConfig(text);
+    const game = tree.children.find((c) => c.name === 'GAME');
+    if (!game) return null;
+    const out = {
+      title: get(game, 'Title') || '', mode: get(game, 'Mode') || '', ut: null,
+      funds: null, sci: null, rep: null,
+      difficulty: null, facilities: {}, tech: [], parts: [], contracts: [], strategies: [], progress: [],
+    };
+    const params = game.children.find((c) => c.name === 'PARAMETERS');
+    const career = params && params.children.find((c) => c.name === 'CAREER');
+    if (career) {
+      out.difficulty = {
+        startFunds: num(get(career, 'StartingFunds')), startSci: num(get(career, 'StartingScience')), startRep: num(get(career, 'StartingReputation')),
+        gain: [num(get(career, 'FundsGainMultiplier')), num(get(career, 'ScienceGainMultiplier')), num(get(career, 'RepGainMultiplier'))],
+        loss: [num(get(career, 'FundsLossMultiplier')), num(get(career, 'RepLossMultiplier'))],
+        repLossDeclined: num(get(career, 'RepLossDeclined')),
+      };
+    }
+    const flight = game.children.find((c) => c.name === 'FLIGHTSTATE');
+    if (flight) out.ut = num(get(flight, 'UT')) === undefined ? null : num(get(flight, 'UT'));
+    for (const sc of game.children.filter((c) => c.name === 'SCENARIO')) {
+      const name = get(sc, 'name');
+      if (name === 'Funding') out.funds = num(get(sc, 'funds'));
+      else if (name === 'Reputation') out.rep = num(get(sc, 'rep'));
+      else if (name === 'ResearchAndDevelopment') {
+        out.sci = num(get(sc, 'sci'));
+        for (const t of sc.children.filter((c) => c.name === 'Tech')) {
+          const id = get(t, 'id');
+          if (!id) continue;
+          if (/^Available$/i.test(get(t, 'state') || '')) out.tech.push(id);
+          for (const p of t.vals.filter((v) => v[0] === 'part')) out.parts.push(p[1]);
+        }
+      } else if (name === 'ScenarioUpgradeableFacilities') {
+        for (const f of sc.children) {
+          const lvl = num(get(f, 'lvl'));
+          if (lvl !== undefined) out.facilities[f.name.replace(/^SpaceCenter\//, '')] = Math.round(lvl * 2) + 1;
+        }
+      } else if (name === 'ContractSystem') {
+        const list = sc.children.find((c) => c.name === 'CONTRACTS');
+        for (const c of (list ? list.children : []).filter((x) => x.name === 'CONTRACT')) {
+          const state = get(c, 'state') || '';
+          if (state !== 'Active' && state !== 'Offered') continue;
+          // values = expire time, deadline time, advance, reward, failure funds, science, reputation reward, reputation penalty, then four dates
+          const v = String(get(c, 'values') || '').split(',').map(Number);
+          out.contracts.push({
+            type: (get(c, 'type') || '').replace(/Contract$/, ''), state: state, body: get(c, 'body') || '', agent: get(c, 'agentName') || '',
+            prestige: num(get(c, 'prestige')), advance: v[2] || 0, reward: v[3] || 0, failure: v[4] || 0, sci: v[5] || 0, rep: v[6] || 0, repFail: v[7] || 0,
+            deadline: v[10] || null,
+          });
+        }
+      } else if (name === 'ProgressTracking') {
+        // milestones already reached: top-level one-offs by name, body ones as 'Body:Node'
+        const pr = sc.children.find((c) => c.name === 'Progress');
+        for (const n of pr ? pr.children : []) {
+          const inner = n.children.filter((k) => k.name !== 'vessel' && k.name !== 'crew');
+          if (/^(Records|POI)/.test(n.name) || !inner.length) { if (get(n, 'completed') !== undefined) out.progress.push(n.name); continue; }
+          for (const k of inner) if (get(k, 'completed') !== undefined || get(k, 'completedManned') !== undefined || get(k, 'completedUnmanned') !== undefined) out.progress.push(n.name + ':' + k.name);
+        }
+      } else if (name === 'StrategySystem') {
+        const list = sc.children.find((c) => c.name === 'STRATEGIES');
+        for (const s of (list ? list.children : []).filter((x) => x.name === 'STRATEGY')) {
+          if (/^false$/i.test(get(s, 'isActive') || 'true')) continue;
+          out.strategies.push({ id: get(s, 'name') || '', factor: num(get(s, 'factor')) });
+        }
+      }
+    }
+    return out;
+  }
+
+  return { parseConfig: parseConfig, parseAntennaCfg: parseAntennaCfg, parseSave: parseSave, parseKopernicus: parseKopernicus, parseCareer: parseCareer };
 });

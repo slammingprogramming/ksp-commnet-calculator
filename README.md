@@ -7,7 +7,8 @@
 
 A web app for planning Kerbal Space Program's CommNet. It started as a replacement for a CommNet calculator
 spreadsheet and grew into a workbench: calculate signal strength, chain relays, find antennas, **track orbits in
-time, see exactly when and why a link is blocked, and design relays that fix the cause instead of the symptom**.
+time, see exactly when and why a link is blocked, and design relays that fix the cause instead of the symptom**. It also
+plans missions and career saves: rockets from your `.craft` files, delta-v, costs, research and upgrades.
 
 Built for **KSP 1.12.5** (stock, Breaking Ground, Outer Planets Mod, plus several antenna mods). No install, no
 account, nothing leaves your browser.
@@ -29,6 +30,9 @@ account, nothing leaves your browser.
 | **Network** | See who can reach whom over time, find the relays everything depends on, and compare ground-station sets (including the Making History ones). |
 | **Reentry** | Find when and where a landing loses signal to plasma, and the speed you can come in at without losing it. |
 | **Launch windows** | Find when to leave for another planet or moon, and how much speed it takes. |
+| **Career** | Plan a career save: money, science and reputation over time, facility upgrades with their real prices, the research order to a goal, the science each experiment is worth. |
+| **Missions** | Import your `.craft` rockets, build a route (launch, transfer, landing, return) and see whether the rocket can do it, what it needs and what it does to your funds. |
+| **Landing** | Find landing sites by how much tilt you can land on and stay on, latitude, height, biome and distance; see each body's biomes, what a lander can measure there, and the Breaking Ground instruments and rocks. |
 | **Antennas & mods** | Toggle antenna packs, add your own, import a mod's part `.cfg` files or a Kopernicus planet pack. |
 
 Each tab has a guide with screenshots in the **[documentation](docs/README.md)**; start with
@@ -49,6 +53,7 @@ Each tab has a guide with screenshots in the **[documentation](docs/README.md)**
 | [Scenarios](docs/scenario.md) | vessels, saves, patched conics, export and share links |
 | [Tracker](docs/tracker.md) · [Relay planner](docs/planner.md) | blackouts and how the fixes are designed |
 | [Network](docs/network.md) · [Reentry](docs/reentry.md) · [Launch windows](docs/launch-windows.md) | whole-network planning, plasma blackout on landings, transfers and burns |
+| [Career](docs/career.md) · [Missions](docs/missions.md) · [Landing](docs/landing.md) | money, research, milestones and facility planning; rockets, delta-v and mission cost; landing sites and science |
 | [Game settings and mods](docs/settings-and-mods.md) | difficulty, antenna packs, mod and planet-pack import |
 | [How the model works](docs/model.md) · [Research notes](docs/RESEARCH.md) | the maths, the game rules, sources and verification |
 | [FAQ](docs/faq.md) · [Development](docs/development.md) | troubleshooting; commands, layout and conventions |

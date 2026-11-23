@@ -290,7 +290,140 @@ def atmospheres(scene):
     return res
 
 
-def main(ksp, out_json=None):
+def career_facts(scene):
+    """Career facts that live in the scene/prefab files rather than in GameData configs.
+
+    * facilities: UpgradeableFacility objects. After the id string come two ints (1, level count) and one record per level: the
+      first float of each record is levelCost (record 0 is the level-1 base cost, which is not an upgrade price; records 1 and 2
+      are the prices of the upgrades to level 2 and 3). Records are 56..132 bytes long, so the costs are found as whole-number floats
+      >= 1000 inside the object. The KSC scene copies (levelNN files) are preferred over the shared-assets prefab copies.
+    * science: CelestialBodyScienceParams are 9 consecutive floats inside the CelestialBody prefab: landed, splashed, flying low,
+      flying high, in space low, in space high, recovery, flying altitude threshold, space altitude threshold."""
+    fac, pref = {}, {}
+    for name, r, cls, go, gp, off, end, pid in scene.behaviours({'Upgradeables.UpgradeableFacility'}):
+        d = r['data']; b = Buf(d, off, r['little'])
+        try: fid = b.string()
+        except Exception: continue
+        p = b.p
+        vals = []
+        for q in range(p + 8, end - 3, 4):
+            f = struct.unpack_from('<f', d, q)[0]
+            if f >= 1000 and f == int(f) and f < 2e6: vals.append(int(f))
+        if len(vals) == 3:
+            (pref if name.startswith('sharedassets') else fac)[fid.split('/')[-1]] = vals
+    facilities = {k: {'base': v[0], 'level2': v[1], 'level3': v[2]} for k, v in {**pref, **fac}.items()}
+    science = {}
+    for name, r, cls, go, gp, off, end, pid in scene.behaviours({'CelestialBody'}):
+        seg = r['data'][off:end]
+        for q in range(0, len(seg) - 36, 4):
+            v = struct.unpack_from('<9f', seg, q)
+            if all(0 <= x <= 200 for x in v[:7]) and v[0] > 0 and 100 <= v[7] <= 1e7 and v[6] > 0 and v[4] > 0 and v[8] >= 1000 and (v[8] >= v[7] or go == 'Gilly'):
+                science[go] = {'landed': v[0], 'splashed': v[1], 'flyingLow': v[2], 'flyingHigh': v[3], 'spaceLow': v[4], 'spaceHigh': v[5],
+                               'recovery': v[6], 'flyingAltitude': v[7], 'spaceAltitude': v[8]}
+    return {'facilities': facilities, 'science': science}
+
+
+def _map_header(d, o, le):
+    """A MapSO / CBAttributeMapSO body: an int, the map name, then width, height, bytes per pixel, data length and the pixels."""
+    b = Buf(d, o, le)
+    b.i32(); name = b.string()
+    w, h, bpp, ln = b.i32(), b.i32(), b.i32(), b.i32()
+    return name, w, h, bpp, b.p, ln
+
+
+def terrain_facts(scene, out_dir):
+    """Planet terrain maps used by the game's terrain generator (PQS): the height map of each body (with its scale and offset) and its
+    biome map. Writes <out_dir>/<Body>.height (one byte per pixel, row 0 = south pole), <Body>.biome (index into the body's biome list)
+    and terrain.json with the sizes, scale/offset and biome names and colours. Height in metres = offset + scale * byte / 255; a pixel
+    at longitude lon, latitude lat is at u = 0.25 - lon/360 (wrapped), v = (lat + 90) / 180 (checked against the Kerbin ground
+    stations: they all land on the right biomes). The generator adds noise on top of these maps, which is not read."""
+    os.makedirs(out_dir, exist_ok=True)
+    maps = {}            # path id -> (kind, file, header)
+    for name, r, cls, go, gp, off, end, pid in scene.behaviours({'MapSO', 'CBAttributeMapSO'}):
+        maps[pid] = (cls, r, off, end)
+    # transforms and GameObjects of the file, to walk from a height modifier up to the body it belongs to
+    trans, go_first, go_name = {}, {}, {}
+    meta = {}
+    for fname, r in scene.files.items():
+        d, le = r['data'], r['little']
+        for pid, start, size, cid in r['objs']:
+            o = r['doff'] + start
+            try:
+                if cid == 4:
+                    b = Buf(d, o, le); gf, gp = pptr(b); b.p += 40
+                    n = b.i32(); b.p += 12 * n
+                    ff, fp = pptr(b)
+                    trans[(fname, pid)] = (gp, fp if ff == 0 else 0)
+                elif cid == 1:
+                    b = Buf(d, o, le); n = b.i32()
+                    if 0 < n < 2000:
+                        ff, fp = pptr(b); go_first[(fname, pid)] = fp
+                        b.p += 12 * (n - 1); b.u32(); go_name[(fname, pid)] = b.string()
+            except Exception: pass
+    bodies = {}
+    for fname, r, cls, go, gp, off, end, pid in scene.behaviours({'PQSMod_VertexHeightMap'}):
+        d = r['data']; seg = d[off:end]
+        link = None
+        for k in range(0, len(seg) - 12, 4):
+            fid, pv = struct.unpack_from('<iq', seg, k)
+            if fid == 0 and pv in maps and maps[pv][0] == 'MapSO': link = (k, pv); break
+        if not link: continue
+        k, pv = link
+        deform, offset = struct.unpack_from('<2d', seg, k + 12)
+        chain, g = [], gp
+        for _ in range(12):
+            chain.append(go_name.get((fname, g), '?'))
+            t = go_first.get((fname, g))
+            if (fname, t) not in trans: break
+            f = trans[(fname, t)][1]
+            if not f or (fname, f) not in trans: break
+            g = trans[(fname, f)][0]
+        body = chain[-1]
+        cl, mr, mo, me = maps[pv]
+        mname, w, h, bpp, dp, ln = _map_header(mr['data'], mo, mr['little'])
+        if mname == 'genericoffset' or not body or body in ('_Height', '_HeightNoise', '?'): continue
+        if body in bodies and bodies[body]['w'] * bodies[body]['h'] >= w * h: continue
+        bodies[body] = {'map': mname, 'w': w, 'h': h, 'bpp': bpp, 'scale': deform, 'offset': offset, 'dp': dp, 'ln': ln, 'file': mr}
+    result = {}
+    for body, m in bodies.items():
+        raw = m['file']['data'][m['dp']:m['dp'] + m['ln']]
+        px = bytes(raw[0::m['bpp']]) if m['bpp'] > 1 else bytes(raw)
+        open(os.path.join(out_dir, body + '.height'), 'wb').write(px)
+        result[body] = {'heightMap': m['map'], 'w': m['w'], 'h': m['h'], 'scale': m['scale'], 'offset': m['offset']}
+    # biome maps: attribute table follows the pixels (row width, count, then colour (4 floats), name, display name and 12 bytes each)
+    for pid, (cls, r, off, end) in maps.items():
+        if cls != 'CBAttributeMapSO': continue
+        d = r['data']
+        mname, w, h, bpp, dp, ln = _map_header(d, off, r['little'])
+        tail = d[dp + ln:end]
+        cnt = struct.unpack_from('<i', tail, 4)[0]; p = 8; attrs = []
+        for _ in range(cnt):
+            col = struct.unpack_from('<4f', tail, p); p += 16
+            n1 = struct.unpack_from('<i', tail, p)[0]; nm = tail[p + 4:p + 4 + n1].decode('latin1'); p += 4 + ((n1 + 3) & ~3)
+            n2 = struct.unpack_from('<i', tail, p)[0]; p += 4 + ((n2 + 3) & ~3) + 12
+            attrs.append((nm, tuple(round(c * 255) for c in col[:3])))
+        body = mname.split('_')[0].capitalize()
+        idx = {}
+        out = bytearray(w * h)
+        pix = d[dp:dp + ln]
+        cache = {}
+        step = bpp
+        for i in range(w * h):
+            c = (pix[i * step], pix[i * step + 1], pix[i * step + 2])
+            v = cache.get(c)
+            if v is None:
+                v = min(range(len(attrs)), key=lambda k: sum((a - b) ** 2 for a, b in zip(attrs[k][1], c)))
+                cache[c] = v
+            out[i] = v
+        open(os.path.join(out_dir, body + '.biome'), 'wb').write(bytes(out))
+        rec = result.setdefault(body, {})
+        rec['biomeMap'] = mname; rec['bw'] = w; rec['bh'] = h
+        rec['biomes'] = [{'name': a[0], 'rgb': list(a[1])} for a in attrs]
+    json.dump(result, open(os.path.join(out_dir, 'terrain.json'), 'w'), indent=1)
+    return result
+
+
+def main(ksp, out_json=None, terrain_dir=None):
     data_dir = os.path.join(ksp, 'KSP_x64_Data')
     files = _plain_files(data_dir)
     first = next(iter(files.values()))
@@ -349,11 +482,21 @@ def main(ksp, out_json=None):
     facts['atmospheres'] = atmospheres(scene)
     for k, v in facts['atmospheres'].items():
         print('  %-8s depth %.0f m  M %.4f  gamma %.2f  shock x%.2f  T0 %.1f K  P0 %.3f kPa  (%d + %d keys)' % (k, v['depth'], v['molarMass'], v['adiabaticIndex'], v['shockTemperatureMultiplier'], v['temperatureCurve'][0][1], v['pressureCurve'][0][1], len(v['temperatureCurve']), len(v['pressureCurve'])))
+    print(chr(10) + '== Career facts (facility upgrade prices, science multipliers per body)')
+    facts['career'] = career_facts(scene)
+    for k, v in sorted(facts['career']['facilities'].items()): print('  %-24s %s' % (k, v))
+    for k, v in sorted(facts['career']['science'].items()): print('  %-8s %s' % (k, v))
     if out_json:
         json.dump(facts, open(out_json, 'w'), indent=1); print('\nwrote', out_json)
+    if terrain_dir:
+        t = terrain_facts(scene, terrain_dir)
+        print('\n== Terrain maps written to', terrain_dir)
+        for k, v in sorted(t.items()): print('  %-8s %s' % (k, {a: b for a, b in v.items() if a != 'biomes'}), len(v.get('biomes', [])), 'biomes')
 
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print(__doc__); sys.exit(2)
-    main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)
+    args = [a for a in sys.argv[1:] if not a.startswith('--terrain=')]
+    tdir = next((a.split('=', 1)[1] for a in sys.argv[1:] if a.startswith('--terrain=')), None)
+    main(args[0], args[1] if len(args) > 1 else None, tdir)

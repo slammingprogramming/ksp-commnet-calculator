@@ -1,7 +1,8 @@
 # KSP CommNet Workbench documentation
 
 A web app for planning Kerbal Space Program's CommNet: calculate signal strength, chain relays, find antennas, track
-orbits in time, see when and why a link is blocked, and design relays that fix the cause.
+orbits in time, see when and why a link is blocked, and design relays that fix the cause. It also plans missions and
+career saves.
 **Use it online:** <https://slammingprogramming.github.io/ksp-commnet-calculator/>
 
 ## Using the app
@@ -16,6 +17,9 @@ orbits in time, see when and why a link is blocked, and design relays that fix t
 | [Network planner](network.md) | see who can reach whom over time, find single points of failure, compare ground-station sets (Making History included) |
 | [Reentry and plasma blackout](reentry.md) | find when and where a landing loses signal, and how fast you can come in without losing it |
 | [Launch windows and manoeuvres](launch-windows.md) | find when to leave for another planet or moon and put the burn on a vessel |
+| [Career](career.md) | plan money, science and reputation over time, facility upgrades and the tech tree from your save |
+| [Missions](missions.md) | import rockets, build a route, and check delta-v, facilities, research and cost |
+| [Landing](landing.md) | find landing sites by tilt, latitude, height and biome; science and Breaking Ground planning for a site |
 | [Game settings and mods](settings-and-mods.md) | set difficulty and the Tracking Station, enable antenna packs, import mod antennas and planet packs |
 | [FAQ and troubleshooting](faq.md) | fix "the calculator says it works but the game disagrees" and similar |
 

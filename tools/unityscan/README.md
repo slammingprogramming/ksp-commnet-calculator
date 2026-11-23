@@ -10,8 +10,12 @@ python tools/unityscan/unityscan.py "C:/Program Files (x86)/Steam/steamapps/comm
 python tools/unityscan/unityscan.py "<KSP folder>" facts.json      # also write the numbers to a file
 ```
 
-It is how the values behind the simulation's ground-station rules, spin phases and gravity constant were confirmed
+It also reads the facility upgrade prices and the per-body science multipliers that the career tools use (`facts.json`, `career` key). It is how the values behind the simulation's ground-station rules, spin phases and gravity constant were confirmed
 (see `docs/RESEARCH.md`). Run it again after a game update to see whether anything moved.
+
+`--terrain=<folder>` also writes each body's height map and biome map (one byte per pixel) with their scale, offset and biome names, for
+`scripts/build-terrain-data.js` (the Landing tab). The map of a body is found by following the game's object hierarchy from the terrain
+modifier to the body, and the longitude orientation was checked against the Kerbin ground stations.
 
 Notes:
 

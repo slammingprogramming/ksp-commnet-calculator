@@ -48,7 +48,8 @@ differs, [open an issue](https://github.com/slammingprogramming/ksp-commnet-calc
 ## What is not modelled?
 
 Plasma blackout inside the relay simulation (it only happens during an atmospheric entry, which the Reentry tab covers),
-orbital perturbations (the game has none), powered flight and fuel, other mods' signal multipliers and science bonuses. See the table in [How the model works](model.md#accuracy-and-limits).
+orbital perturbations (the game has none), powered flight and fuel, other mods' signal multipliers and science bonuses. On the
+career side: milestone records (altitude, speed, distance, depth), strategy effects on contract rewards and recoveries, and fuel flow set by hand (see [Career](career.md) and [Missions](missions.md)). The landing finder uses the game's maps without its added noise, so slopes are regional (see [Landing](landing.md)). See the table in [How the model works](model.md#accuracy-and-limits).
 
 ## The planner takes a long time
 
