@@ -65,6 +65,14 @@ How the game pays for deployed science (read from its code; [research notes](RES
   power while you are away, and a share for the distance: nothing right on the sensor, all of it at 2% of the body's radius
   around the surface (4 km on the Mun) and half from 30% of the radius on (60 km on the Mun). Impacts under 3000 J don't count,
   the subject stops at its cap, and Jool has no energy scale, so no seismic science there.
+* **Which crashes to plan:** under that, a table of the mass to drop. Energy simply adds up, so the *total* mass that fills the cap is
+  fixed by the speed (one crash of 2 t pays what two of 1 t pay) and splitting it only costs you the 3000 J floor per impact. It
+  lists one crash alone, two, three, four and six, at your speed and at the speeds an impactor reaches from a 30 km and a 100 km
+  orbit (a de-orbit burn with periapsis at the surface) and from far away (escape speed), and the same for a far crash that pays half.
+  The distance band says where to aim: full value at 4 km on the Mun, at least 90% from 3.1 to 19.8 km, nothing on the sensor itself.
+  Aim your orbit's ground track so the crash lands in that ring. With two or more sensors, type their positions (latitude and
+  longitude, one per line) and the tab finds the point that sits in the ring of all of them; sensors within a few tens of
+  kilometres of each other can share one crash. Bodies with an atmosphere slow the crash down, so use the speed you measure at the ground.
 
 ## How far to trust the numbers
 

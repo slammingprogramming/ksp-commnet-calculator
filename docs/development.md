@@ -32,6 +32,7 @@ outside the project.
 | `js/transfer.js` | Lambert solver and launch-window search between sibling bodies |
 | `js/terrain-data.js`, `js/landing.js` | generated: a coarse grid per body (biome, height, slope percentiles) from the game's maps (`node scripts/build-terrain-data.js <folder>`, input from `unityscan.py --terrain=<folder>`); the landing-site finder |
 | `js/career-data.js` | generated: the tech tree, part list, science and contract tables, facility rules (`node scripts/build-career-data.js`; numbers only) |
+| `js/netplan.js`, `js/ui-netplan.js` | the network generator: sites to nodes, antennas the career has, staged runs of the relay planner, unlock costs, station/base/lander advice, earning table |
 | `js/craft.js`, `js/career.js`, `js/mission.js` | rockets (.craft import, price, mass, stage-by-stage delta-v), career state, facilities, tech plan, finance and science, mission legs |
 | `js/share.js` | scenario export and import, share-link validation (all input is untrusted) |
 | `js/parsers.js` | ConfigNode parser, part `.cfg` import, Kopernicus planet-pack import, `persistent.sfs` reader |

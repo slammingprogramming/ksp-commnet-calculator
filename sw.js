@@ -7,8 +7,8 @@ const CACHE = 'kspcn-' + VERSION;
 const FILES = [
   './', 'index.html', 'css/app.css', 'icon.svg', 'manifest.webmanifest',
   'js/data.js', 'js/orbits.js', 'js/core.js', 'js/world.js', 'js/trajectory.js', 'js/sim.js', 'js/network.js', 'js/planner.js',
-  'js/reentry.js', 'js/transfer.js', 'js/parsers.js', 'js/share.js', 'js/career-data.js', 'js/craft.js', 'js/career.js', 'js/terrain-data.js', 'js/landing.js', 'js/mission.js', 'js/app.js', 'js/ui-scenario.js', 'js/ui-tracker.js',
-  'js/ui-planner.js', 'js/ui-network.js', 'js/ui-reentry.js', 'js/ui-transfer.js', 'js/ui-career.js', 'js/ui-missions.js', 'js/ui-landing.js', 'js/main.js',
+  'js/reentry.js', 'js/transfer.js', 'js/parsers.js', 'js/share.js', 'js/career-data.js', 'js/craft.js', 'js/career.js', 'js/terrain-data.js', 'js/landing.js', 'js/mission.js', 'js/netplan.js', 'js/app.js', 'js/ui-scenario.js', 'js/ui-tracker.js',
+  'js/ui-planner.js', 'js/ui-network.js', 'js/ui-reentry.js', 'js/ui-transfer.js', 'js/ui-career.js', 'js/ui-missions.js', 'js/ui-landing.js', 'js/ui-netplan.js', 'js/main.js',
 ];
 
 self.addEventListener('install', (event) => {

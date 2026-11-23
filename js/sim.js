@@ -93,6 +93,9 @@
     for (const n of opts.nodes || []) {
       const stats = n.powerOverride || Core.vesselStats(n.antennas || [], lookup, st.rangeMod);
       const rec = { id: n.id, name: n.name, home: false, tracked: n.tracked !== false, loc: n.loc, own: stats.own, relay: stats.relay, source: n };
+      // Optional terrain-shadow what-if for a landed node: it cannot see anything lower than `mask` degrees above its local horizon.
+      // Stock CommNet has no terrain occlusion (only whole bodies block), so this is off unless a plan asks for it.
+      if (n.mask > 0 && n.loc.type === 'landed') rec.mask = Math.sin(Math.min(n.mask, 89) * Math.PI / 180);
       if (n.loc.type === 'orbit') {
         const b = world.index.get(n.loc.body);
         if (!b) { problems.push('“' + n.name + '”: unknown body ' + n.loc.body); continue; }
@@ -115,6 +118,8 @@
     const n = nodes.length;
     const bodyIdx = nodes.map((r) => world.index.get(r.loc.body).idx);
     const isHome = nodes.map((r) => r.home);
+    const maskSin = nodes.map((r) => r.mask || 0);
+    const anyMask = maskSin.some((m) => m > 0);
     const trackedIdx = [];
     nodes.forEach((r, i) => { if (!r.home && r.tracked) trackedIdx.push(i); });
 
@@ -197,6 +202,17 @@
       if (d >= R) return;
       const s = Core.signalStrength(d, R);
       rngA[ia] = s;
+      if (anyMask) {
+        const low = (a, o) => {
+          if (!(maskSin[a] > 0)) return false;
+          const c = bodyIdx[a] * 3;
+          const ux = nodePos[a * 3] - bodyPos[c], uy = nodePos[a * 3 + 1] - bodyPos[c + 1], uz = nodePos[a * 3 + 2] - bodyPos[c + 2];
+          const dot = (nodePos[o * 3] - nodePos[a * 3]) * ux + (nodePos[o * 3 + 1] - nodePos[a * 3 + 1]) * uy + (nodePos[o * 3 + 2] - nodePos[a * 3 + 2]) * uz;
+          return dot < maskSin[a] * d * Math.sqrt(ux * ux + uy * uy + uz * uz);
+        };
+        if (low(i, j)) { blkA[ia] = bodyIdx[i]; return; }
+        if (low(j, i)) { blkA[ia] = bodyIdx[j]; return; }
+      }
       const bl = blocker(ax, ay, az, nodePos[j * 3], nodePos[j * 3 + 1], nodePos[j * 3 + 2]);
       blkA[ia] = bl;
       if (bl < 0) sigA[ia] = s;

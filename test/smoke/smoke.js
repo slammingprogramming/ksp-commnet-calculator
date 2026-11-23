@@ -54,7 +54,7 @@ async function main() {
     await page.goto(base);
     await page.waitForSelector('#tabs button');
     const tabs = await page.$$eval('#tabs button', (bs) => bs.map((b) => b.id));
-    assert.deepEqual(tabs, ['tabbtn-chain', 'tabbtn-finder', 'tabbtn-reach', 'tabbtn-scenario', 'tabbtn-tracker', 'tabbtn-planner', 'tabbtn-network', 'tabbtn-reentry', 'tabbtn-transfer', 'tabbtn-career', 'tabbtn-missions', 'tabbtn-landing', 'tabbtn-antennas', 'tabbtn-help']);
+    assert.deepEqual(tabs, ['tabbtn-chain', 'tabbtn-finder', 'tabbtn-reach', 'tabbtn-scenario', 'tabbtn-tracker', 'tabbtn-planner', 'tabbtn-netplan', 'tabbtn-network', 'tabbtn-reentry', 'tabbtn-transfer', 'tabbtn-career', 'tabbtn-missions', 'tabbtn-landing', 'tabbtn-antennas', 'tabbtn-help']);
     for (const id of tabs) {
       await page.click('#' + id);
       const panel = '#tab-' + id.replace('tabbtn-', '');
@@ -224,7 +224,20 @@ async function main() {
     await page.waitForSelector('#tab-landing >> text=Lander experiments here', { timeout: 10000 });
     assert.match(await page.innerText('#tab-landing'), /Deployed instruments/);
     assert.match(await page.innerText('#tab-landing'), /Surface rocks/);
+    assert.match(await page.innerText('#tab-landing'), /Seismometer: which crashes to plan/);
     step('landing sites');
+
+    // Network plan: the example sites, a short look-ahead, one generated stage
+    await page.click('#tabbtn-netplan');
+    await page.click('#tab-netplan button:has-text("Example: Mun station")');
+    await page.selectOption('#tab-netplan select[aria-label="Look ahead"]', '0.25');
+    await page.click('#tab-netplan button:has-text("Generate the network")');
+    await page.waitForSelector('#tab-netplan button:has-text("Copy the plan as text")', { timeout: 180000 });
+    assert.match(await page.innerText('#tab-netplan'), /Your network/);
+    assert.match(await page.innerText('#tab-netplan'), /Far-side base/);
+    await page.click('#tab-netplan button:has-text("Find base or mine sites")');
+    await page.waitForSelector('#tab-netplan button:has-text("Add as base")', { timeout: 60000 });
+    step('network plan');
 
     // Planner budget fields are there and keep their value
     await page.click('#tabbtn-planner');

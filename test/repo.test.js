@@ -23,7 +23,7 @@ test('the source repository URL is the same in the app, footer, package.json and
   assert.equal(pkg.bugs.url, REPO + '/issues');
   // Compare whole URLs, not substrings, so a longer or lookalike address cannot satisfy the check.
   const readmeUrls = read('README.md').match(/https?:\/\/[^\s)>"'\]]+/g) || [];
-  assert.ok(readmeUrls.includes(PAGES), 'README Pages link');
+  assert.ok(readmeUrls.some((u) => u === PAGES), 'README Pages link');
 });
 
 test('the licence notice names the copyright holder and the licence is AGPL-3.0-or-later', () => {

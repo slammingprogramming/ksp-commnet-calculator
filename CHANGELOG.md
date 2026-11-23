@@ -2,6 +2,28 @@
 
 All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Network plan tab:** list the sites that must stay connected (stations, labs, bases, mining sites, parked landers, rovers and aircraft that roam)
+  and get a relay network built to your uptime goal, either all at once or in stages that keep the earlier stages' relays. It uses the relay
+  planner's simulation, and with a career loaded it builds only with antennas you have researched and bought, then lists what to unlock
+  (the antennas, the research order and its science, the part prices) and whether a Tracking Station upgrade is needed, with the cost of
+  each stage against your funds and science.
+- **Placement advice:** station and lab orbits (the body's low and high space science multipliers, the period, the delta-v to land and return),
+  a reusable lander's propellant and the ore that refills it (the game's ISRU ratios), and base or mine candidates on flat ground with several
+  biomes in reach, scored by how well they see the network. A table of where to earn science, ranked by science per delta-v.
+- **Terrain margin for surface sites:** an optional elevation mask (5°, 15°, 30°) for landed sites and roaming vehicles. The stock game has
+  no terrain occlusion, so this is for mods and caution; a failing site is offered high ground for a relay lander.
+- **Seismometer crash planner (Landing tab):** the mass to drop for one crash and for several at your speed and at the speeds from a low
+  orbit and from far away, the distance band that pays at least 90%, and the best impact point for two or more sensors.
+
+### Fixed
+- Research costs no longer depend on the order of the goals (`Career.techPlan` chose a parent too early when another goal supplied it).
+- Parts bought in a save are matched to a craft's parts by name: the old pattern turned every character into an underscore, so any bought
+  part of the same name length counted.
+- The repository test compares README links with an exact match (CodeQL alert 3 was a false positive on the earlier form).
+
 ## [1.4.0] - 2026-11-22
 
 ### Added

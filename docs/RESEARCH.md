@@ -308,4 +308,15 @@ biomes and its frequency. How it is paid (read from `Expansions.Serenity.Deploye
   When several parts hit at once the multiplier of the last one in the list is used. A mod hook (`seismicDataCalcOverride`) can replace the
   result; stock does not set it.
 
+* ISRU (`Squad/Parts/Resources/ISRU/ISRU.cfg`, Convert-O-Tron 250 liquid fuel + oxidizer converter): input `Ore` ratio 0.5 and `ElectricCharge` 30,
+  output `LiquidFuel` 0.45 and `Oxidizer` 0.55 per converter cycle (per second at full rate). `ResourcesGeneric.cfg` densities: Ore 0.01 t/unit,
+  liquid fuel and oxidizer 0.005 t/unit: one ore unit becomes 0.9 + 1.1 units of propellant, so a tonne of ore is a tonne of propellant. Drill rates
+  depend on the ore concentration, which is not in the files read here (the drill `Efficiency` is: 0.3 for the small drill, 1.5 for the radial one).
+* Terrain and CommNet: the occluder test (section 2) takes the celestial bodies only, so cliffs and crater rims never block a link in stock.
+  The Network plan tab's terrain setting is an elevation mask the simulator applies to a landed site (`sim.js`, `node.mask`): it is a margin for
+  modded games, off by default.
+* `Career.techPlan` used to cost the same goals differently depending on their order when one goal was another's alternative parent; goals now count
+  as parents that will be researched. The part-name normaliser in `Career.craftNeeds` (`mk1pod.v2` against `mk1pod_v2`) used a pattern that matched
+  every character; both are fixed and tested.
+
 **Not read:** kerbal hiring cost curve details, the interval records, the Space Center biomes, and the noise the terrain generator adds.

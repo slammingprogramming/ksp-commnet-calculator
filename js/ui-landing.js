@@ -309,6 +309,40 @@
     if (r.bestDistance !== null) {
       out.push(h('p', { class: 'hint', text: 'Distance counts by the angle around the body: the best is ' + fmt(r.bestDistance / 1000, 1) + ' km away (100%); right on top of the sensor gives nothing, and from ' + fmt(r.farDistance / 1000) + ' km on the share stays at ' + pctOf(r.farShare) + '. A scientist who sets the sensor down raises the rate up to 20 times (5% → 100%). Each sensor counts the impact, the extras at the reduced share, but the subject still stops at its cap.' }));
     }
+    return out.concat(seismicPlanBlock(bodyName, b, radius, dp, im, sensors, gain, changed));
+  }
+
+  /** The crash planner: which mass to drop at which speed, how many impacts, and where to aim them. */
+  function seismicPlanBlock(bodyName, bodyDef, radius, dp, im, sensors, gain, changed) {
+    if (!bodyDef || !radius) return [];
+    const atmo = Career.hasAtmosphere(bodyName);
+    const speeds = [{ label: 'your speed above', speed: im.speed }].concat(atmo ? [] : Career.impactSpeeds(bodyDef, [30, 100]));
+    // optional sensor positions, one "latitude longitude" pair per line, in the order the sensors are listed
+    const lines = String(im.positions || '').split(/\n/).map((l) => l.trim().split(/[\s,;]+/).map(parseFloat)).filter((p) => p.length >= 2 && isFinite(p[0]) && isFinite(p[1]));
+    const units = (sensors.length ? sensors : [{ level: null }]).map((u, i) => (sensors.length > 1 && lines.length >= sensors.length ? Object.assign({}, u, { lat: lines[i][0], lon: lines[i][1] }) : u));
+    const plan = Career.seismicPlan(bodyName, { radius: radius, units: units, speeds: speeds, power: dp.power, gain: gain, done: (im.done || 0) / (gain || 1), maxImpacts: 6 });
+    if (!plan.ok) return [];
+    if (plan.full) return [h('p', { class: 'hint', text: 'The seismic subject is full: no further crash earns anything.' })];
+    const area = h('textarea', { rows: 3, cols: 24, 'aria-label': 'sensor positions, latitude and longitude per line', placeholder: '-0.10 23.40, -0.12 23.46' });
+    area.value = im.positions || '';
+    area.addEventListener('change', () => { im.positions = area.value; changed(); });
+    const t = (c) => h('td', { text: c });
+    const head = ['Speed', 'One impact alone', '2 impacts, each', '3, each', '4, each', '6, each', 'A far impact (half value)'];
+    const rows = plan.speeds.map((r) => {
+      const at = (n) => r.rows[n - 1];
+      return h('tr', {}, t(r.label + ' (' + fmt(r.speed) + ' m/s)'), t(fmt(at(1).total, 2) + ' t'), t(fmt(at(2).each, 2) + ' t'), t(fmt(at(3).each, 2) + ' t'), t(fmt(at(4).each, 2) + ' t'), t(fmt(at(6).each, 2) + ' t'), t(fmt(r.massFar, 2) + ' t'));
+    });
+    const out = [h('h4', { text: 'Seismometer: which crashes to plan' }),
+      h('p', { class: 'hint', text: 'Impact energy adds up, so the total mass to drop is the same however many crashes you split it into (a tiny impact below ' + fmt(plan.minimum) + ' J counts for nothing, so each must stay above that). Distance counts as much as mass: ' + fmt(plan.best / 1000, 1) + ' km from the sensor pays full value, anywhere from ' + fmt(plan.bandFrom / 1000, 1) + ' to ' + fmt(plan.bandTo / 1000, 1) + ' km pays at least 90% of it, and beyond ' + fmt(plan.far / 1000) + ' km it is only ' + fmt(plan.farShare * 100) + '%. Aim your orbit’s ground track so the crash lands in that ring; an impact right on the sensor pays nothing. With the cap at ' + fmt(plan.cap, 1) + ' and ' + fmt(plan.left, 1) + ' still open, these masses fill what is left (set the science already in above).' + (atmo ? ' ' + bodyName + ' has an atmosphere: drag slows a crash, so use the speed you measure at the ground.' : '') }),
+      h('table', {}, h('thead', {}, h('tr', {}, ...head.map((x) => h('th', { text: x })))), h('tbody', {}, ...rows))];
+    if (sensors.length > 1) {
+      out.push(h('div', { class: 'row' }, field('Sensor positions (latitude longitude, one per line)', area, 'in the order listed; optional')));
+      if (plan.point) {
+        out.push(h('p', { text: 'Best impact point for all ' + sensors.length + ' sensors: ' + fmt(plan.point.lat, 4) + '°, ' + fmt(plan.point.lon, 4) + '°, at ' + plan.point.distances.map((d) => fmt(d / 1000, 1)).join(' and ') + ' km from them; that is ' + fmt(plan.point.share * 100) + '% of the best the sensors could ever get from one impact.' }));
+      } else {
+        out.push(h('p', { class: 'hint', text: 'Set the sensors down within about ' + fmt(plan.bandTo / 1000, 0) + ' km of each other and one crash can sit in the full-value ring of all of them. Give their positions here to find the point.' }));
+      }
+    }
     return out;
   }
 

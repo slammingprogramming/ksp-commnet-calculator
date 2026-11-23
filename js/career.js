@@ -121,12 +121,13 @@
       const sub = n.parents.map((p) => costToReach(p, seen));
       return n.cost + (n.any ? Math.min.apply(null, sub) : sub.reduce((a, b) => a + b, 0));
     };
+    const goalSet = new Set(goals.filter((g) => nodes[g] && !have.has(g)));     // goals count as parents that will be researched, whatever order they come in
     const add = (id) => {
       if (have.has(id) || need.has(id) || !nodes[id]) return;
       need.add(id);
       const n = nodes[id];
       if (!n.parents.length) return;
-      if (n.any && !n.parents.some((p) => have.has(p) || need.has(p))) {
+      if (n.any && !n.parents.some((p) => have.has(p) || need.has(p) || goalSet.has(p))) {
         let best = null, bc = Infinity;
         for (const p of n.parents) { const c = costToReach(p); if (c < bc) { bc = c; best = p; } }
         add(best);
@@ -166,7 +167,7 @@
   }
   /** The research and purchases a craft needs: tech nodes not yet done and the entry price of every part not yet bought. */
   function craftNeeds(state, craft) {
-    const norm = (id) => String(id).replace(/./g, '_');      // saves write mk1pod.v2, the part configs mk1pod_v2
+    const norm = (id) => String(id).replace(/\./g, '_');      // saves write mk1pod.v2, the part configs mk1pod_v2
     const have = done(state), bought = new Set(state.parts.map(norm));
     const nodesNeeded = new Set(), buy = {};
     let funds = 0;
@@ -353,12 +354,12 @@
     const joules = 0.5 * mass * 1000 * speed * speed;
     const scale = D.seismicEnergy && D.seismicEnergy[body] ? D.seismicEnergy[body] : null;   // no entry: float.MaxValue, nothing
     const dist = seismicDistance(opts.distance, opts.radius);
-    const sensors = (opts.units && opts.units.length ? opts.units : [{ level: null }]).map((u) => ({ level: u.level, rate: deployRate(u.level) }));
+    const sensors = (opts.units && opts.units.length ? opts.units : [{ level: null }]).map((u) => ({ level: u.level, rate: deployRate(u.level), own: u.distance != null ? seismicDistance(u.distance, opts.radius) : null }));
     sensors.sort((x, y) => y.rate - x.rate);
     const share = diminishing(sensors.length);
     // science per joule of all sensors together, before the cap
     let perJoule = 0;
-    sensors.forEach((u, k) => { u.share = k === 0 ? 1 : share; perJoule += scale ? u.share * power * cap / scale * u.rate / 100 * dist : 0; });
+    sensors.forEach((u, k) => { u.share = k === 0 ? 1 : share; perJoule += scale ? u.share * power * cap / scale * u.rate / 100 * (u.own !== null ? u.own : dist) : 0; });
     const below = joules < (D.seismicMin || 0);
     const raw = below ? 0 : joules * perJoule, left = Math.max(0, cap - done);
     const got = Math.min(raw, left);
@@ -373,6 +374,86 @@
       joulesToFill: full, massToFill: full !== null && speed > 0 ? Math.max(full, D.seismicMin || 0) * 2 / (speed * speed) / 1000 : null,
       bestDistance: opts.radius > 0 ? peak[0] * opts.radius : null, farDistance: opts.radius > 0 && flat ? flat[0] * opts.radius : null, farShare: flat ? flat[1] : null,
     };
+  }
+
+  // ---- seismometer impact planning ------------------------------------------------------------------------------
+  const GC = (lat1, lon1, lat2, lon2, R) => {
+    const r = Math.PI / 180, a = Math.sin((lat2 - lat1) * r / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin((lon2 - lon1) * r / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+  };
+  const aimPoint = (lat, lon, bearing, d, R) => {
+    const r = Math.PI / 180, dl = d / R, la = lat * r, br = bearing * r;
+    const la2 = Math.asin(Math.sin(la) * Math.cos(dl) + Math.cos(la) * Math.sin(dl) * Math.cos(br));
+    const lo2 = lon * r + Math.atan2(Math.sin(br) * Math.sin(dl) * Math.cos(la), Math.cos(dl) - Math.sin(la) * Math.sin(la2));
+    return { lat: la2 / r, lon: ((lo2 / r + 540) % 360) - 180 };
+  };
+
+  /** Impact speeds (m/s) an impactor reaches an airless body at, from a body record ({gm, radius}): the fall from a circular orbit
+   *  after a de-orbit burn (periapsis at the surface), and the fall from far away (escape speed, the most a bound orbit can give). */
+  function impactSpeeds(b, altsKm) {
+    const R = b.radius, rows = [];
+    for (const km of altsKm || [30, 100]) {
+      const r0 = R + km * 1000;
+      rows.push({ label: 'de-orbited from a ' + km + ' km orbit', speed: Math.sqrt(b.gm * (2 / R - 2 / (R + r0))) });
+    }
+    rows.push({ label: 'falling in from far away (escape speed)', speed: Math.sqrt(2 * b.gm / R) });
+    return rows;
+  }
+
+  /** Plan the crashes that fill a body's seismic subject. opts: radius (m), units [{level, lat, lon}], speeds [{label, speed}], power, gain, done,
+   *  maxImpacts. Gives the distance band that pays full value, the mass for one impact and for n smaller ones at each speed, the same
+   *  for a far impact, and, with sensor positions, the point that serves all of them best. Energy adds up (a crash of 1 t + a crash of
+   *  1 t = one of 2 t), so splitting never costs more energy, only the 3000 J floor per impact. */
+  function seismicPlan(body, opts) {
+    opts = opts || {};
+    const D = CD.deployed || {}, curve = D.seismicCurve || [], R = opts.radius || 0;
+    const units = opts.units && opts.units.length ? opts.units : [{ level: null }];
+    const common = { radius: R, units: units, power: opts.power, gain: opts.gain, done: opts.done };
+    const probe = seismicImpact(body, Object.assign({ mass: 1, speed: 1000, distance: null }, common));
+    const out = { body: body, ok: probe.ok && R > 0, cap: probe.cap, left: probe.left, scale: probe.scale, minimum: D.seismicMin || 0, sensors: units.length, speeds: [], point: null };
+    if (!out.ok || !curve.length) { out.ok = false; return out; }
+    if (out.left <= 1e-9) { out.full = true; return out; }                  // nothing left to fill
+    const v = (x) => Math.max(0, Math.min(1, floatCurve(curve, x)));
+    let peakV = 0, peakX = 0;
+    for (let x = 0; x <= 1; x += 0.0005) if (v(x) > peakV + 1e-9) { peakV = v(x); peakX = x; }
+    let lo = peakX, hi = peakX;
+    while (lo > 0 && v(lo - 0.0005) >= 0.9 * peakV) lo -= 0.0005;
+    while (hi < 1 && v(hi + 0.0005) >= 0.9 * peakV) hi += 0.0005;
+    out.best = peakX * R; out.bandFrom = Math.max(lo, 0.0005) * R; out.bandTo = hi * R; out.bandShare = 0.9 * peakV;
+    out.far = probe.farDistance; out.farShare = probe.farShare;
+    // two sensors or more with known positions: the impact point that sits near the peak of as many of their curves as possible
+    let at = out.best;
+    if (units.length > 1 && units.every((u) => typeof u.lat === 'number' && typeof u.lon === 'number')) {
+      const score = (p) => {
+        const sorted = units.map((u) => ({ u: u, rate: deployRate(u.level), d: GC(p.lat, p.lon, u.lat, u.lon, R) })).sort((a, b) => b.rate - a.rate);
+        const sh = diminishing(sorted.length);
+        return sorted.reduce((t, x, k) => t + (k === 0 ? 1 : sh) * x.rate / 100 * v(x.d / R), 0);
+      };
+      const cands = [];
+      units.forEach((u) => { for (let br = 0; br < 360; br += 10) cands.push(aimPoint(u.lat, u.lon, br, out.best, R)); cands.push({ lat: u.lat, lon: u.lon }); });
+      const c = { lat: units.reduce((t, u) => t + u.lat, 0) / units.length, lon: units[0].lon };
+      cands.push(c);
+      let bestP = null, bestS = -1;
+      for (const p of cands) { const sc = score(p); if (sc > bestS) { bestS = sc; bestP = p; } }
+      const ideal = units.map((u) => deployRate(u.level)).sort((a, b) => b - a).reduce((t, r, k) => t + (k === 0 ? 1 : diminishing(units.length)) * r / 100, 0) * peakV;
+      out.point = { lat: bestP.lat, lon: bestP.lon, distances: units.map((u) => GC(bestP.lat, bestP.lon, u.lat, u.lon, R)), share: ideal > 0 ? bestS / ideal : 0 };
+      at = null;
+      out.pointUnits = units.map((u, i) => Object.assign({}, u, { distance: out.point.distances[i] }));
+    }
+    const base = at !== null ? { distance: at } : { units: out.pointUnits };
+    for (const sp of opts.speeds || []) {
+      const one = seismicImpact(body, Object.assign({ mass: 1, speed: sp.speed }, common, base));
+      const farOne = seismicImpact(body, Object.assign({ mass: 1, speed: sp.speed }, common, { distance: out.far }));
+      const minMass = 2 * out.minimum / (sp.speed * sp.speed) / 1000;
+      const rows = [];
+      for (let n = 1; n <= (opts.maxImpacts || 6); n++) {
+        const each = Math.max(one.massToFill / n, minMass);
+        const got = Math.min(out.left, seismicImpact(body, Object.assign({ mass: each, speed: sp.speed }, common, base)).perImpact * n);
+        rows.push({ n: n, each: each, total: each * n, science: got, fills: got >= out.left - 1e-6 });
+      }
+      out.speeds.push({ label: sp.label, speed: sp.speed, joules: one.joulesToFill, massOne: one.massToFill, massFar: farOne.massToFill, minMass: minMass, rows: rows });
+    }
+    return out;
   }
   /** Power units a station needs and what its panels/RTGs give: the control station, every instrument and a ground dish each need
    *  their part's powerUnitsRequired; each solar panel or RTG gives its powerUnitsProduced plus the engineer bonus. */
@@ -511,6 +592,6 @@
     recoveryFactor: recoveryFactor, missionFinance: missionFinance, forecast: forecast, contractEstimate: contractEstimate,
     experimentValue: experimentValue, scienceTable: scienceTable, hasAtmosphere: hasAtmosphere,
     deployRate: deployRate, engineerBonus: engineerBonus, diminishing: diminishing, deployedScience: deployedScience, deployPower: deployPower,
-    floatCurve: floatCurve, seismicDistance: seismicDistance, seismicImpact: seismicImpact,
+    floatCurve: floatCurve, seismicDistance: seismicDistance, seismicImpact: seismicImpact, seismicPlan: seismicPlan, impactSpeeds: impactSpeeds, greatCircle: GC,
   };
 });

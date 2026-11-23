@@ -28,6 +28,7 @@ account, nothing leaves your browser.
 | **Tracker** | Watch bodies, orbits, links and blocking spheres move, and list every blackout with its start, duration and cause. |
 | **Relay planner** | Diagnose *why* a vessel loses contact and design, check and stress-test the relays that fix it, within a budget if you like. |
 | **Network** | See who can reach whom over time, find the relays everything depends on, and compare ground-station sets (including the Making History ones). |
+| **Network plan** | List your stations, labs, bases, mines, rovers and aircraft and get a relay network built in stages (or all at once) from what your career has unlocked, with what to unlock next, what it costs, where to put stations and bases, and where to earn the science. |
 | **Reentry** | Find when and where a landing loses signal to plasma, and the speed you can come in at without losing it. |
 | **Launch windows** | Find when to leave for another planet or moon, and how much speed it takes. |
 | **Career** | Plan a career save: money, science and reputation over time, facility upgrades with their real prices, the research order to a goal, the science each experiment is worth. |
@@ -52,7 +53,7 @@ Each tab has a guide with screenshots in the **[documentation](docs/README.md)**
 | [Calculators](docs/calculators.md) | chain, finder and reach map |
 | [Scenarios](docs/scenario.md) | vessels, saves, patched conics, export and share links |
 | [Tracker](docs/tracker.md) · [Relay planner](docs/planner.md) | blackouts and how the fixes are designed |
-| [Network](docs/network.md) · [Reentry](docs/reentry.md) · [Launch windows](docs/launch-windows.md) | whole-network planning, plasma blackout on landings, transfers and burns |
+| [Network](docs/network.md) · [Network plan](docs/netplan.md) · [Reentry](docs/reentry.md) · [Launch windows](docs/launch-windows.md) | whole-network planning, plasma blackout on landings, transfers and burns |
 | [Career](docs/career.md) · [Missions](docs/missions.md) · [Landing](docs/landing.md) | money, research, milestones and facility planning; rockets, delta-v and mission cost; landing sites and science |
 | [Game settings and mods](docs/settings-and-mods.md) | difficulty, antenna packs, mod and planet-pack import |
 | [How the model works](docs/model.md) · [Research notes](docs/RESEARCH.md) | the maths, the game rules, sources and verification |
