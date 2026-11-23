@@ -294,5 +294,18 @@ biomes and its frequency. How it is paid (read from `Expansions.Serenity.Deploye
   placing a power part adds `DeployedSciencePowerSkill` (0 at level 0, else modifiers 0, 1, 1, 2, 2 by `min(level, 4)`). Loaded: rate ×1 if the
   cluster's power covers the need, else 0. Unloaded: 0 if short, 1 if non-solar parts cover it, else 0.5.
 * The control station collects parts within `controlUnitRange` = 20 m (constructor default) and has no count limit.
+* Seismometer (`DeployedScienceExperiment.ProcessSeismicEvent` and the impact handlers): an impact on the cluster's body gives
+  `totalJoules = Σ ½ × mass(t) × 1000 × v²` over the parts that hit (part mass plus resources; `v` = the part's rigidbody speed, or the vessel's
+  `srfSpeed` when it has none; a whole-vessel event uses `GetTotalMass` / `totalMass` and `srfSpeed`). Under `MinimumEnergyRequired`
+  (3000 J, `DeployedScience.cfg` `SEISMICENERGY`) nothing happens. `impactRate` = the body's `Energy` entry in that node (Mun 7.82e8 J, Minmus
+  2.12e7, Duna 3.62e9, ...); a body without an entry gets `float.MaxValue`, so no science. Science of one sensor =
+  `ScienceDiminishingModifierRate × solarMultiplier × dataScale × scienceLimit × totalJoules / impactRate × ScienceModifierRate / 100 ×
+  distanceMultiplier`, with `scienceLimit = subject.scienceCap`; it is clamped so the sensor's total never passes `scienceLimit`, and stored as
+  `science / subjectValue` like the hourly instruments. `distanceMultiplier = Clamp01(distanceCurve.Evaluate(d / body.Radius))`, where
+  `d` = `FinePrint.Utilities.CelestialUtilities.GreatCircleDistance` (= radius × acos of the dot product of the two surface normals) between the
+  impact and the station, and one radius if there is no controlling vessel. `distanceCurve` (seismicSensor.cfg, Unity Hermite keys): `0 0 50 50`,
+  `0.02 1 -0.0453 -0.0453`, `0.3 0.5 0.0247 0.0247`, `1 0.5 0 0`: nothing at the sensor, 100% at 0.02 rad (4 km on the Mun), 50% from 0.3 rad on.
+  When several parts hit at once the multiplier of the last one in the list is used. A mod hook (`seismicDataCalcOverride`) can replace the
+  result; stock does not set it.
 
 **Not read:** kerbal hiring cost curve details, the interval records, the Space Center biomes, and the noise the terrain generator adds.

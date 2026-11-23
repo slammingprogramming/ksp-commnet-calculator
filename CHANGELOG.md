@@ -10,6 +10,9 @@ All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioni
   reach it, with the body's landed multiplier, the diminishing-returns share for several of one kind (the best one at 100%, the
   rest at the table's share), half rate for solar-only stations while you are away, and your difficulty's science gain. A power
   budget says how many solar panels or RTGs the station needs (engineers add power).
+- **Seismometer impacts:** give the mass, speed and distance of a crash and the Landing tab gives the science it earns and how many
+  such impacts fill the subject, by the game's formula (impact energy against the body's energy scale, the sensor's rate, the
+  distance curve from the part's config, the cap). It also says how big one impact must be to fill the subject alone.
 
 ## [1.3.1] - 2026-11-22
 

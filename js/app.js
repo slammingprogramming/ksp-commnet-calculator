@@ -95,7 +95,7 @@
       career: { state: null, ledger: [], goals: [], body: 'Mun', nextId: 1, title: '', draft: null, open: {} },
       missions: { crafts: [], list: [], sel: 0, nextId: 1 },
       landing: { body: 'Mun', landTilt: 10, stayTilt: 5, share: 0.5, maxLat: 90, minAlt: null, maxAlt: null, dry: true, biomes: [], avoid: [], near: null, nearKm: 500, varietyKm: 100, rank: 'flat', pick: null, open: {},
-        deploy: { counts: {}, level: 0, power: 1, engineer: 0, dish: 0, gain: null } },
+        deploy: { counts: {}, level: 0, power: 1, engineer: 0, dish: 0, gain: null, impact: { mass: 5, speed: 550, km: null, done: 0 } } },
       saveInfo: null,
       ui: { tab: 'chain' },
     };

@@ -57,7 +57,14 @@ How the game pays for deployed science (read from its code; [research notes](RES
   loaded (you are elsewhere) and only solar panels power it, the game runs it at half rate. Parts must be within 20 m of the station; there is no limit on how many it runs.
 * **Getting it home:** the station sends its data over CommNet when it has a link to the KSC (the control station has its own
   antenna); the science is credited times your difficulty's science gain (the tab takes it from your career, or set it yourself).
-* The **seismometer** pays per impact (crash a spent stage nearby), so it has a total but no hourly rate.
+* The **seismometer** pays per impact, not per hour. Below the table, give the mass of what crashes (a spent stage with its
+  leftover fuel), its speed at the surface and how far from the sensor it hits, and the tab gives the science from that impact
+  and how many such impacts fill the subject. The game's rule: the impact's energy (½ × mass × speed²) divided by the body's
+  energy scale (the Mun 7.82 × 10⁸ J, Minmus 2.12 × 10⁷ J, Duna 3.62 × 10⁹ J ...) is the fraction of the cap paid, times the
+  sensor's rate (5% from anyone, up to 100% from a scientist), the share above for several sensors, the half rate for solar-only
+  power while you are away, and a share for the distance: nothing right on the sensor, all of it at 2% of the body's radius
+  around the surface (4 km on the Mun) and half from 30% of the radius on (60 km on the Mun). Impacts under 3000 J don't count,
+  the subject stops at its cap, and Jool has no energy scale, so no seismic science there.
 
 ## How far to trust the numbers
 

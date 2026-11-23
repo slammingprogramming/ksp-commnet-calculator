@@ -239,6 +239,47 @@ test('deployed science follows the game: shared subject per body, best instrumen
   assert.equal(Career.deployPower(4, 1, 0, 1).makers, 3);
 });
 
+test('seismometer: science per impact = cap x energy / body scale x rate x distance share, never past the cap', () => {
+  const D = CD.deployed;
+  assert.deepEqual(D.seismicCurve.map((k) => k[0]), [0, 0.02, 0.3, 1]);   // seismicSensor.cfg distanceCurve
+  const R = 200000;                                                          // the Mun
+  near(Career.seismicDistance(0, R), 0, 1e-12);                              // right on top of the sensor: nothing
+  near(Career.seismicDistance(0.02 * R, R), 1, 1e-12);                       // the peak, 4 km on the Mun
+  near(Career.seismicDistance(0.3 * R, R), 0.5, 1e-12);
+  near(Career.seismicDistance(5 * R, R), 0.5, 1e-12);                        // clamped past the last key
+  near(Career.seismicDistance(null, R), 0.5, 1e-12);                         // no distance: one radius, as the game does
+  // a Unity Hermite segment at its middle: 0.5 v0 + 0.125 dt out0 + 0.5 v1 - 0.125 dt in1
+  near(Career.floatCurve([[0, 0, 0, 2], [1, 1, 4, 0]], 0.5), 0.5 + 0.125 * 2 - 0.125 * 4, 1e-12);
+
+  // 1 t at 1250 m/s = 7.8125e8 J, about the Mun's scale of 7.82e8 J; a non-scientist's sensor (5%) at the best distance
+  const one = Career.seismicImpact('Mun', { mass: 1, speed: 1250, distance: 4000, radius: R });
+  assert.equal(one.ok, true);
+  near(one.joules, 7.8125e8, 1e-3);
+  near(one.cap, 80 * 4, 1e-9);
+  near(one.science, 320 * (7.8125e8 / D.seismicEnergy.Mun) * 0.05, 1e-9);
+  assert.equal(one.impactsToFill, Math.ceil(320 / one.science));
+  near(one.joulesToFill, D.seismicEnergy.Mun / 0.05, 1e-3);
+  // a level 5 scientist raises it 20 times, solar-only while away halves it, the science gain multiplies it, distance 0.5 halves it
+  const sci = Career.seismicImpact('Mun', { mass: 1, speed: 1250, distance: 4000, radius: R, units: [{ level: 5 }], power: 0.5, gain: 2 });
+  near(sci.science, one.science * 20 * 0.5 * 2, 1e-9);
+  const far = Career.seismicImpact('Mun', { mass: 1, speed: 1250, distance: 1.2 * R, radius: R });   // past the last key (between 0.3 and 1 the Hermite curve bulges to ~0.503)
+  near(far.science, one.science * 0.5, 1e-9);
+  // a big impact is clamped to what is left of the cap
+  const big = Career.seismicImpact('Mun', { mass: 50, speed: 1250, distance: 4000, radius: R, done: 300 });
+  near(big.science, 20, 1e-9);
+  assert.ok(big.perImpact > big.science);
+  assert.equal(big.impactsToFill, 1);
+  // two sensors: the second counts at the 2-of-a-kind share
+  const two = Career.seismicImpact('Mun', { mass: 1, speed: 1250, distance: 4000, radius: R, units: [{ level: null }, { level: null }] });
+  near(two.science, one.science * (1 + Career.diminishing(2)), 1e-9);
+  // under the minimum energy: nothing; a body without an energy scale (Jool): nothing
+  const tiny = Career.seismicImpact('Mun', { mass: 0.001, speed: 2, distance: 4000, radius: R });
+  assert.equal(tiny.below, true);
+  assert.equal(tiny.science, 0);
+  assert.equal(Career.seismicImpact('Jool', { mass: 10, speed: 1000, radius: 6e6 }).ok, false);
+  assert.equal(Career.seismicImpact('Jool', { mass: 10, speed: 1000, radius: 6e6 }).science, 0);
+});
+
 test('science table: biome-dependent experiments are flagged and comet or asteroid samples are left out', () => {
   const rows = Career.scienceTable('Mun', 17);
   assert.ok(!rows.some((r) => /^(asteroid|comet)/.test(r.id)));

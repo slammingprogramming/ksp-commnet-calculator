@@ -287,7 +287,7 @@
    *  down, null for anyone else). `opts.power`: 1 = power covers the need, 0.5 = solar panels only while the station is not
    *  loaded (the game halves the rate then), 0 = not enough power. `opts.gain` = the difficulty's science gain.
    *  In each kind the instrument with the highest rate runs at full share and every other one at diminishing(count)
-   *  (DeployedScience.SetDiminishingScienceRate). The seismometer earns from impacts, so it has a cap but no hourly rate. */
+   *  (DeployedScience.SetDiminishingScienceRate). The seismometer earns from impacts (seismicImpact), so here it has a cap but no hourly rate. */
   function deployedScience(body, units, opts) {
     const D = CD.deployed, b = CD.bodyScience[body];
     opts = opts || {};
@@ -319,6 +319,60 @@
       if (ok && n) total += cap * gain;
     }
     return { body: body, multiplier: mult, rows: rows, perHour: perHour, total: total };
+  }
+  /** A Unity/KSP FloatCurve (Hermite keys [time, value, inTangent, outTangent]), clamped to the end values outside the keys. */
+  function floatCurve(keys, x) {
+    if (!keys || !keys.length) return 1;
+    if (x <= keys[0][0]) return keys[0][1];
+    const last = keys[keys.length - 1];
+    if (x >= last[0]) return last[1];
+    let k = 1;
+    while (keys[k][0] < x) k++;
+    const a = keys[k - 1], b = keys[k], dt = b[0] - a[0], s = (x - a[0]) / dt, s2 = s * s, s3 = s2 * s;
+    return (2 * s3 - 3 * s2 + 1) * a[1] + (s3 - 2 * s2 + s) * dt * a[3] + (-2 * s3 + 3 * s2) * b[1] + (s3 - s2) * dt * b[2];
+  }
+  /** The seismometer's share of an impact by distance: its distanceCurve at the angle (great-circle distance / body radius),
+   *  clamped to 0..1. A missing distance counts as one radius (the game's fallback when the impact has no controlling vessel). */
+  function seismicDistance(distance, radius) {
+    const keys = CD.deployed && CD.deployed.seismicCurve;
+    const angle = distance === null || distance === undefined || !(radius > 0) ? 1 : distance / radius;
+    return clamp01(floatCurve(keys, angle));
+  }
+  /** Science from one impact near the seismometers on a body (DeployedScienceExperiment.ProcessSeismicEvent):
+   *  energy = sum of 1/2 x mass(kg) x speed^2 over what hits (the vessel's surface speed); impacts under the minimum energy are
+   *  ignored; each sensor makes share x power x cap x (energy / the body's energy scale) x rate/100 x distance share, and the
+   *  subject never holds more than its cap (cap = 80 x the body's landed multiplier). R&D credits it times the science gain.
+   *  opts: mass (t), speed (m/s), distance (m, great circle), radius (m, the body's), units [{level}] (the seismometers, default
+   *  one set down by a non-scientist), power (1, 0.5 solar-only while away, 0), gain, done (science already in the subject). */
+  function seismicImpact(body, opts) {
+    const D = CD.deployed || {}, e = (D.instruments || {}).deployedSeismicSensor, b = CD.bodyScience[body];
+    opts = opts || {};
+    const mult = b ? b.landed : 1, cap = e ? e.cap * mult : 0;
+    const power = opts.power === undefined ? 1 : opts.power, gain = opts.gain === undefined ? 1 : opts.gain;
+    const mass = opts.mass || 0, speed = opts.speed || 0, done = Math.max(0, opts.done || 0);
+    const joules = 0.5 * mass * 1000 * speed * speed;
+    const scale = D.seismicEnergy && D.seismicEnergy[body] ? D.seismicEnergy[body] : null;   // no entry: float.MaxValue, nothing
+    const dist = seismicDistance(opts.distance, opts.radius);
+    const sensors = (opts.units && opts.units.length ? opts.units : [{ level: null }]).map((u) => ({ level: u.level, rate: deployRate(u.level) }));
+    sensors.sort((x, y) => y.rate - x.rate);
+    const share = diminishing(sensors.length);
+    // science per joule of all sensors together, before the cap
+    let perJoule = 0;
+    sensors.forEach((u, k) => { u.share = k === 0 ? 1 : share; perJoule += scale ? u.share * power * cap / scale * u.rate / 100 * dist : 0; });
+    const below = joules < (D.seismicMin || 0);
+    const raw = below ? 0 : joules * perJoule, left = Math.max(0, cap - done);
+    const got = Math.min(raw, left);
+    const full = perJoule > 0 ? left / perJoule : null;   // joules one impact needs to fill what is left
+    const curve = D.seismicCurve || [];
+    const peak = curve.reduce((m, k) => (k[1] > m[1] ? k : m), [1, 0]);
+    const flat = curve.length ? curve.find((k) => k[0] > peak[0] && k[1] === curve[curve.length - 1][1]) : null;   // where it levels off
+    return {
+      body: body, ok: !!(e && scale), joules: joules, scale: scale, ratio: scale ? joules / scale : 0, minimum: D.seismicMin || 0, below: below,
+      distanceShare: dist, sensors: sensors, multiplier: mult, cap: cap * gain, left: left * gain,
+      perImpact: raw * gain, science: got * gain, impactsToFill: raw > 0 ? Math.ceil(left / raw - 1e-9) : null,
+      joulesToFill: full, massToFill: full !== null && speed > 0 ? Math.max(full, D.seismicMin || 0) * 2 / (speed * speed) / 1000 : null,
+      bestDistance: opts.radius > 0 ? peak[0] * opts.radius : null, farDistance: opts.radius > 0 && flat ? flat[0] * opts.radius : null, farShare: flat ? flat[1] : null,
+    };
   }
   /** Power units a station needs and what its panels/RTGs give: the control station, every instrument and a ground dish each need
    *  their part's powerUnitsRequired; each solar panel or RTG gives its powerUnitsProduced plus the engineer bonus. */
@@ -457,5 +511,6 @@
     recoveryFactor: recoveryFactor, missionFinance: missionFinance, forecast: forecast, contractEstimate: contractEstimate,
     experimentValue: experimentValue, scienceTable: scienceTable, hasAtmosphere: hasAtmosphere,
     deployRate: deployRate, engineerBonus: engineerBonus, diminishing: diminishing, deployedScience: deployedScience, deployPower: deployPower,
+    floatCurve: floatCurve, seismicDistance: seismicDistance, seismicImpact: seismicImpact,
   };
 });

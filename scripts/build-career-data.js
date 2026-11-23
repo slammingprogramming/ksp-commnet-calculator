@@ -69,6 +69,7 @@ for (const n of parseConfig(read(path.join(ksp, 'GameData/Squad/Resources/TechTr
 const partDirs = [['', 'GameData/Squad/Parts']];
 for (const dlc of ['MakingHistory', 'Serenity']) partDirs.push([dlc, 'GameData/SquadExpansion/' + dlc + '/Parts']);
 const xmit = {};                       // transmit efficiency per experiment (the module default is 0.5)
+const groundCurves = {};               // distanceCurve per deployed experiment id (only the seismometer has one)
 const parts = [];
 const seen = new Set();
 for (const [dlc, dir] of partDirs) {
@@ -112,6 +113,9 @@ for (const [dlc, dir] of partDirs) {
           if (rec.dec === 1 && node) rec.decNode = node;
         } else if (mn === 'ModuleGroundExperiment' || mn === 'ModuleGroundExpControl' || mn === 'ModuleGroundSciencePart' || mn === 'ModuleGroundCommsPart') {
           if (mn === 'ModuleGroundExperiment') rec.ground = val(m, 'experimentId');   // Breaking Ground deployed instrument
+          // the seismometer's share of an impact by distance (angle in radians on the body): FloatCurve keys [time, value, in, out]
+          const dc = kid(m, 'distanceCurve');
+          if (dc) groundCurves[rec.ground] = vals(dc, 'key').map((k) => k.split(/\s+/).map(Number));
           // power units the deployed part makes and needs (a station only runs when what its parts make covers what they need)
           rec.pu = [num(val(m, 'powerUnitsProduced'), 0), num(val(m, 'powerUnitsRequired'), 0)];
         } else if (mn === 'CModuleFuelLine') {
@@ -172,6 +176,7 @@ if (fs.existsSync(path.join(dlcSerenity, 'Resources/ScienceDefs.cfg'))) {
   if (dr) deployed.returns = kids(dr, 'ENTRY').map((e) => [num(val(e, 'ExpCount')), num(val(e, 'Rate'))]);
   const se = kid(root, 'SEISMICENERGY');
   if (se) { deployed.seismicMin = num(val(se, 'MinimumEnergyRequired')); deployed.seismicEnergy = {}; for (const e of kids(se, 'ENTRY')) deployed.seismicEnergy[val(e, 'BodyName')] = num(val(e, 'Energy')); }
+  if (groundCurves.deployedSeismicSensor) deployed.seismicCurve = groundCurves.deployedSeismicSensor;
   // crew skills: the scientist who sets an instrument down fixes its rate, an engineer adds power units to solar panels and RTGs
   const traitsFile = path.join(dlcSerenity, 'Experience/Traits.cfg');
   if (fs.existsSync(traitsFile)) {

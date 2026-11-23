@@ -259,7 +259,7 @@
               h('td', { text: r.title.replace('Surface Deployed ', '') }), h('td', { text: part ? part.title : '—' }), h('td', { class: 'num', text: part ? fmt(part.cost) : '—' }),
               h('td', { class: 'num' }, num(countOf(r.id), (v) => { dp.counts[r.id] = v === null ? null : Math.max(0, Math.min(20, Math.round(v))); changed(); }, { size: 3, step: 1, min: 0, max: 20, label: 'how many ' + r.title })),
               h('td', { class: 'num', text: runs }),
-              h('td', { class: 'num', text: r.impact ? 'per impact' : r.ok ? fmt(r.perHour, 3) : '—' }),
+              h('td', { class: 'num', text: r.impact ? 'per impact (below)' : r.ok ? fmt(r.perHour, 3) : '—' }),
               h('td', { class: 'num', text: r.ok ? fmt(r.cap, 1) : '—' }),
               h('td', { class: 'num', text: r.impact || !r.ok ? '—' : hrs(r.hours) }),
               h('td', { text: r.ok ? 'yes' : (D.instruments[r.id].atmo ? 'needs an atmosphere' : 'needs no atmosphere') }));
@@ -270,9 +270,46 @@
           field('Ground dish (HG-48)', h('input', { type: 'checkbox', checked: !!dp.dish, 'aria-label': 'Ground dish', onchange: (ev) => { dp.dish = ev.target.checked ? 1 : 0; changed(); } })),
           field('Panels/RTGs set down by', select(engLevels, String(dp.engineer || 0), (v) => { dp.engineer = parseInt(v, 10); changed(); }, 'Who sets the power parts down'))),
         h('p', { text: 'Power: the control station' + (dp.dish ? ', the dish' : '') + ' and ' + nInst + ' instrument' + (nInst === 1 ? '' : 's') + ' need ' + pw.need + ' power unit' + (pw.need === 1 ? '' : 's') + '; each solar panel or RTG gives ' + pw.each + ', so set down ' + pw.makers + '. Solar panels give nothing at night, and while you are away the game runs a solar-only station at half rate.' }),
-        h('p', { class: 'hint', text: 'Seismic science comes from impacts (the game needs an impact of at least ' + fmt(D.seismicMin) + ' J of seismic energy' + (D.seismicEnergy && D.seismicEnergy[s.body] ? '; the energy scale for ' + s.body + ' is ' + D.seismicEnergy[s.body].toExponential(2) + ' J' : '') + '). Crash a spent stage a few kilometres from the sensor.' }));
+        ...seismicBlock(s.body, dp, units.filter((u) => u.id === 'deployedSeismicSensor'), gain, D, changed));
     }
     return kids;
+  }
+
+  /** The seismometer pays per impact: what one crash of a given mass, speed and distance gives, and how many fill the subject. */
+  function seismicBlock(bodyName, dp, sensors, gain, D, changed) {
+    if (!D.instruments.deployedSeismicSensor) return [];
+    const im = dp.impact || (dp.impact = { mass: 5, speed: 550, km: null, done: 0 });
+    const b = Data.bodies.find((x) => x.name === bodyName || x.id === bodyName);
+    const radius = b ? b.radius : null;
+    const base = Career.seismicImpact(bodyName, { radius: radius });
+    const km = im.km === null || im.km === undefined ? (base.bestDistance === null ? null : base.bestDistance / 1000) : im.km;
+    const r = Career.seismicImpact(bodyName, { mass: im.mass, speed: im.speed, distance: km === null ? null : km * 1000, radius: radius,
+      units: sensors.length ? sensors : null, power: dp.power, gain: gain, done: (im.done || 0) / (gain || 1) });
+    const out = [h('h4', { text: 'Seismometer: science per impact' }),
+      h('p', { class: 'hint', text: 'The seismometer earns nothing per hour; it pays when something crashes into ' + bodyName + ' while the station runs. The game takes the crash energy (½ × mass × speed², the speed at the surface), divides it by the body’s energy scale, and pays that fraction of the cap × the rate fixed when the sensor was set down × the share for its distance, never past the cap. Impacts under ' + fmt(D.seismicMin) + ' J do not count.' + (sensors.length ? '' : ' (No seismometer is planned above; this assumes one, set down as chosen.)') })];
+    if (!r.ok) {
+      out.push(h('p', { text: 'The game has no energy scale for ' + bodyName + ', so impacts there give no seismic science.' }));
+      return out;
+    }
+    out.push(h('div', { class: 'row' },
+      field('Impactor mass (t)', num(im.mass, (v) => { im.mass = v === null ? 0 : Math.max(0, v); changed(); }, { size: 6, step: 0.5, min: 0, label: 'impactor mass in tonnes' }), 'the whole spent stage, with what fuel is left'),
+      field('Speed at impact (m/s)', num(im.speed, (v) => { im.speed = v === null ? 0 : Math.max(0, v); changed(); }, { size: 6, step: 10, min: 0, label: 'impact speed' }), 'surface speed when it hits'),
+      field('Distance from the sensor (km)', num(km === null ? null : Math.round(km * 10) / 10, (v) => { im.km = v === null ? null : Math.max(0, v); changed(); }, { size: 6, step: 0.5, min: 0, label: 'impact distance in km' }), 'clear for the best distance'),
+      field('Seismic science already in', num(im.done || 0, (v) => { im.done = v === null ? 0 : Math.max(0, v); changed(); }, { size: 6, step: 1, min: 0, label: 'seismic science already collected' }), 'of the ' + fmt(r.cap, 1) + ' cap')));
+    const pctOf = (x) => fmt(x * 100, 1) + '%';
+    const sentence = r.below
+      ? 'This impact has ' + fmt(r.joules) + ' J, under the ' + fmt(r.minimum) + ' J the game needs: no science.'
+      : 'This impact has ' + r.joules.toExponential(2) + ' J, ' + pctOf(r.ratio) + ' of the energy scale for ' + bodyName + ' (' + r.scale.toExponential(2) + ' J). At ' + fmt(km, 1) + ' km the sensor gets ' + pctOf(r.distanceShare) + ' of it. Science from it: ' + fmt(r.science, 1) +
+        (r.perImpact > r.science + 1e-9 ? ' (it would be ' + fmt(r.perImpact, 1) + ', but the cap stops it)' : '') + '.';
+    out.push(h('p', { text: sentence }));
+    if (r.left <= 0) out.push(h('p', { text: 'The subject is full: more impacts give nothing.' }));
+    else if (r.impactsToFill !== null) {
+      out.push(h('p', { text: (r.impactsToFill === 1 ? 'One such impact fills' : r.impactsToFill + ' such impacts fill') + ' the ' + fmt(r.left, 1) + ' still open. One impact fills it alone with ' + r.joulesToFill.toExponential(2) + ' J' + (r.massToFill !== null ? ', about ' + fmt(r.massToFill, 1) + ' t at ' + fmt(im.speed) + ' m/s' : '') + '.' }));
+    }
+    if (r.bestDistance !== null) {
+      out.push(h('p', { class: 'hint', text: 'Distance counts by the angle around the body: the best is ' + fmt(r.bestDistance / 1000, 1) + ' km away (100%); right on top of the sensor gives nothing, and from ' + fmt(r.farDistance / 1000) + ' km on the share stays at ' + pctOf(r.farShare) + '. A scientist who sets the sensor down raises the rate up to 20 times (5% → 100%). Each sensor counts the impact, the extras at the reduced share, but the subject still stops at its cap.' }));
+    }
+    return out;
   }
 
   App.registerTab('landing', 'Landing', build, 'antennas');
