@@ -274,8 +274,25 @@ Mun, Duna, Eve, Laythe, Moho, Dres, Eeloo, Tylo, Vall; the others are made by no
 the maps, which is not read.
 
 **Breaking Ground** (`GameData/SquadExpansion/Serenity`): four deployed instruments with `baseValue` (per hour, except the seismometer which pays by
-impact energy) and `scienceCap`; `ScienceTimeDelay` 60 s; a `DIMINSHINGRETURNS` table (1, 0.2, 0.35, 0.45, 0.5 by the number of the same instrument on a
-body; how `DeployedScience.GetDiminishingReturnsMultiplier` is applied to the cap and rate was not worked out); `rocsdef.cfg` lists each rock, its
-bodies and biomes and its frequency.
+impact energy) and `scienceCap`, `dataScale` 1, `applyScienceScale = false`, `situationMask` 1 (landed), `biomeMask` 0; `ScienceTimeDelay` 60 s; a
+`DIMINSHINGRETURNS` table (1, 0.2, 0.35, 0.45, 0.5 by the number of the same instrument on a body); `rocsdef.cfg` lists each rock, its bodies and
+biomes and its frequency. How it is paid (read from `Expansions.Serenity.DeployedScience.*`, `ModuleGroundExperiment`, `ModuleInventoryPart`,
+`ScienceSubject`, `ResearchAndDevelopment`):
+
+* Subject = `GetExperimentSubject(exp, Landed, body, "", "")`: one per instrument kind and body. `ScienceSubject` sets `subjectValue` = the body's
+  `LandedDataValue`, `scienceCap = exp.scienceCap × subjectValue`, `dataScale = exp.dataScale`.
+* Per hour: `scienceValue = baseValue × dataScale × subjectValue × ScienceModifierRate / 100`; each frame adds `scienceValue / 3600 × dt ×
+  ScienceDiminishingModifierRate × power`, clamped to the subject's room left. R&D credits `data / dataScale × subjectValue` up to the cap, times
+  `ScienceGainMultiplier` (difficulty). Sending happens at 10% of the cap or at the cap, over CommNet, with no transmission penalty.
+* `ScienceModifierRate`: the module's constructor sets 5; placing from an EVA kerbal's inventory sets `DeployedScienceExpSkill × 100` if the kerbal
+  has it (Scientist trait, modifiers 0.35, 0.45, 0.60, 0.80, 1 in `Serenity/Experience/Traits.cfg`, index `min(level, 4)` by
+  `ExperienceTrait.CrewMemberExperienceLevel`).
+* Diminishing returns (`SetDiminishingScienceRate`): n = instruments of that kind on that body in powered clusters; the one with the highest
+  `ScienceModifierRate` (first found on ties) gets 1, every other one `GetDiminishingReturnsMultiplier(n)` = the exact table entry for n, else the
+  last entry below n, else 1.
+* Power: every part has `powerUnitsRequired`/`powerUnitsProduced` (station, instruments, dish need 1; solar panel and RTG make 1). An engineer
+  placing a power part adds `DeployedSciencePowerSkill` (0 at level 0, else modifiers 0, 1, 1, 2, 2 by `min(level, 4)`). Loaded: rate ×1 if the
+  cluster's power covers the need, else 0. Unloaded: 0 if short, 1 if non-solar parts cover it, else 0.5.
+* The control station collects parts within `controlUnitRange` = 20 m (constructor default) and has no count limit.
 
 **Not read:** kerbal hiring cost curve details, the interval records, the Space Center biomes, and the noise the terrain generator adds.

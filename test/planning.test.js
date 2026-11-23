@@ -206,6 +206,39 @@ test('Breaking Ground data: four deployed instruments, their parts, the rock lis
   assert.ok(D.rocScience.KerbinBaobabTree.cap === 60);
 });
 
+test('deployed science follows the game: shared subject per body, best instrument at full share, the rest at the table share', () => {
+  // crew skills and power units come from the game files
+  assert.deepEqual(CD.deployed.expSkill, [0.35, 0.45, 0.6, 0.8, 1]);
+  assert.deepEqual(CD.deployed.powerSkill, [0, 1, 1, 2, 2]);
+  assert.equal(Career.deployRate(null), 5); assert.equal(Career.deployRate(0), 35); assert.equal(Career.deployRate(4), 100); assert.equal(Career.deployRate(5), 100);
+  assert.equal(Career.engineerBonus(0), 0); assert.equal(Career.engineerBonus(1), 1); assert.equal(Career.engineerBonus(3), 2); assert.equal(Career.engineerBonus(5), 2);
+  // table lookup: exact entry, else the last one below, else 1
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 9].map(Career.diminishing), [1, 1, 0.2, 0.35, 0.45, 0.5, 0.5]);
+  // Mun: landed multiplier 4. One goo pod by a level-5 scientist: 0.28125 x 4 = 1.125 per hour, cap 45 x 4 = 180, 160 hours
+  const one = Career.deployedScience('Mun', [{ id: 'deployedGooObservation', level: 5 }]);
+  const goo = one.rows.find((r) => r.id === 'deployedGooObservation');
+  near(goo.perHour, 1.125, 1e-9); near(goo.cap, 180, 1e-9); near(goo.hours, 160, 1e-9);
+  assert.equal(one.total, 180);
+  // three goo pods, levels 5, 0 and none: the best runs at 100%, the others at 35% (three of a kind) -> same cap, sooner
+  const three = Career.deployedScience('Mun', [{ id: 'deployedGooObservation', level: 0 }, { id: 'deployedGooObservation', level: 5 }, { id: 'deployedGooObservation', level: null }], { gain: 0.6 });
+  const g3 = three.rows.find((r) => r.id === 'deployedGooObservation');
+  assert.deepEqual(g3.units.map((u) => [u.rate, u.share]), [[100, 1], [35, 0.35], [5, 0.35]]);
+  near(g3.perHour, 0.28125 * 4 * (1 + 0.35 * 0.35 + 0.05 * 0.35) * 0.6, 1e-9);
+  near(g3.cap, 180 * 0.6, 1e-9);
+  // the weather station needs an atmosphere, the ion collector none; the seismometer has a cap but no hourly rate
+  const mun = Career.deployedScience('Mun', [{ id: 'deployedWeatherReport', level: 5 }, { id: 'deployedIONCollector', level: 5 }, { id: 'deployedSeismicSensor', level: 5 }]);
+  assert.equal(mun.rows.find((r) => r.id === 'deployedWeatherReport').ok, false);
+  assert.equal(mun.rows.find((r) => r.id === 'deployedWeatherReport').perHour, 0);
+  assert.equal(mun.rows.find((r) => r.id === 'deployedIONCollector').ok, true);
+  assert.equal(mun.rows.find((r) => r.id === 'deployedSeismicSensor').perHour, 0);
+  near(mun.total, (100 + 80) * 4, 1e-9);
+  // solar only while away: half rate
+  near(Career.deployedScience('Mun', [{ id: 'deployedGooObservation', level: 5 }], { power: 0.5 }).perHour, 0.5625, 1e-9);
+  // power: station + 4 instruments + dish = 6 units; panels give 1 each, 2 when an engineer of level 1 sets them down
+  assert.deepEqual(Career.deployPower(4, 1, 0, 0), { need: 6, each: 1, have: 0, makers: 6 });
+  assert.equal(Career.deployPower(4, 1, 0, 1).makers, 3);
+});
+
 test('science table: biome-dependent experiments are flagged and comet or asteroid samples are left out', () => {
   const rows = Career.scienceTable('Mun', 17);
   assert.ok(!rows.some((r) => /^(asteroid|comet)/.test(r.id)));

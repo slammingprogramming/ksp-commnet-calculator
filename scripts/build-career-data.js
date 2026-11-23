@@ -110,8 +110,10 @@ for (const [dlc, dir] of partDirs) {
           const node = val(m, 'explosiveNodeID') || '';
           rec.dec = node.toLowerCase() === 'srf' ? 3 : 1;
           if (rec.dec === 1 && node) rec.decNode = node;
-        } else if (mn === 'ModuleGroundExperiment') {
-          rec.ground = val(m, 'experimentId');            // Breaking Ground deployed instrument
+        } else if (mn === 'ModuleGroundExperiment' || mn === 'ModuleGroundExpControl' || mn === 'ModuleGroundSciencePart' || mn === 'ModuleGroundCommsPart') {
+          if (mn === 'ModuleGroundExperiment') rec.ground = val(m, 'experimentId');   // Breaking Ground deployed instrument
+          // power units the deployed part makes and needs (a station only runs when what its parts make covers what they need)
+          rec.pu = [num(val(m, 'powerUnitsProduced'), 0), num(val(m, 'powerUnitsRequired'), 0)];
         } else if (mn === 'CModuleFuelLine') {
           rec.fuelLine = 1;                                // a fuel duct: the part it sits on feeds the part at its far end
         } else if (mn === 'ModuleProceduralFairing') {
@@ -170,6 +172,17 @@ if (fs.existsSync(path.join(dlcSerenity, 'Resources/ScienceDefs.cfg'))) {
   if (dr) deployed.returns = kids(dr, 'ENTRY').map((e) => [num(val(e, 'ExpCount')), num(val(e, 'Rate'))]);
   const se = kid(root, 'SEISMICENERGY');
   if (se) { deployed.seismicMin = num(val(se, 'MinimumEnergyRequired')); deployed.seismicEnergy = {}; for (const e of kids(se, 'ENTRY')) deployed.seismicEnergy[val(e, 'BodyName')] = num(val(e, 'Energy')); }
+  // crew skills: the scientist who sets an instrument down fixes its rate, an engineer adds power units to solar panels and RTGs
+  const traitsFile = path.join(dlcSerenity, 'Experience/Traits.cfg');
+  if (fs.existsSync(traitsFile)) {
+    for (const t of parseConfig(read(traitsFile)).children) {
+      for (const e of kids(t, 'EFFECT')) {
+        const mods = (val(e, 'modifiers') || '').split(',').map((x) => num(x.trim())).filter((x) => x !== undefined && !isNaN(x));
+        if (val(e, 'name') === 'DeployedScienceExpSkill') deployed.expSkill = mods;
+        if (val(e, 'name') === 'DeployedSciencePowerSkill') deployed.powerSkill = mods;
+      }
+    }
+  }
   const rocs = parseConfig(read(path.join(dlcSerenity, 'Resources/rocsdef.cfg')));
   for (const n of rocs.children) {
     if (n.name !== 'ROC_DEFINITION') continue;

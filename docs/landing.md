@@ -39,13 +39,25 @@ If you own the expansion the same panel shows two more things:
 * **Surface rocks**: the special rocks you can scan with the ROC arm, the biomes each appears in, whether the region you picked is
   one of them, how much science the scan can give and how common the rock is.
 * **Deployed instruments**: the four sensors you set down from a lander (a seismometer, a weather analyser, a goo monitor and an
-  ion collector), with the part price, the science per hour, the cap, how many hours that takes and whether the instrument works
-  on this body (the weather analyser needs an atmosphere, the ion collector a vacuum). The experiment control station and the power
-  parts are needed too; the panel lists the instruments, not the full kit.
+  ion collector). Say how many of each you plan, who sets them down and how they are powered; the table gives the part price, the
+  science per hour, the total, the time to reach it and whether the instrument works on this body (the weather analyser needs an
+  atmosphere, the ion collector a vacuum). Below it, the power units the station needs and how many solar panels or RTGs that takes.
 
-The game scales the yield by a table when you put several of the same instrument on a body (the tab shows it), but the way it
-combines that table with the cap was not worked out, so the tab does not predict the total for a field of identical sensors. The base and cap
-values are before the body's own science multiplier, which the tab does not apply.
+How the game pays for deployed science (read from its code; [research notes](RESEARCH.md) section 8):
+
+* **One subject per kind and body.** Every goo monitor on the Mun feeds the same subject: no biomes. Its worth is the body's
+  *landed* multiplier (the Mun ×4, Minmus ×5, Duna ×8, Laythe ×14 ...), which the tab applies to both the rate and the cap.
+* **Rate per hour** = base rate × landed multiplier × the rate set when the part was put down × the share below × power.
+  A scientist on EVA sets the rate by level: 35, 45, 60, 80, then 100% from level 4; anyone else leaves it at 5%.
+* **Several of one kind** don't raise the cap; they only reach it sooner. The best-rated one runs at 100%; every other one runs
+  at the share for the count (2 of a kind 20%, 3 35%, 4 45%, 5 or more 50%). Three goo monitors by a level 5 scientist make 1.7
+  times what one makes, not three times.
+* **Power:** the control station, each instrument and a ground dish need 1 unit each; a solar panel or RTG makes 1, plus 1 if an
+  engineer of level 1 or 2 set it down, plus 2 from level 3. Without enough power nothing is made. While the station is not
+  loaded (you are elsewhere) and only solar panels power it, the game runs it at half rate. Parts must be within 20 m of the station; there is no limit on how many it runs.
+* **Getting it home:** the station sends its data over CommNet when it has a link to the KSC (the control station has its own
+  antenna); the science is credited times your difficulty's science gain (the tab takes it from your career, or set it yourself).
+* The **seismometer** pays per impact (crash a spent stage nearby), so it has a total but no hourly rate.
 
 ## How far to trust the numbers
 

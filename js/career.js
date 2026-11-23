@@ -256,6 +256,79 @@
     return rows.sort((a, b) => b.cap - a.cap);
   }
 
+  // ---- Breaking Ground deployed science ---------------------------------------------------------------------------
+  // Read from the game (Expansions.Serenity.DeployedScience, ModuleGroundExperiment, ModuleInventoryPart; docs/RESEARCH.md
+  // section 8). Every instrument of one kind on one body feeds ONE subject (no biome, situation landed), worth the body's landed
+  // multiplier; per hour an instrument makes base x multiplier x rate/100 x share x power, until the subject holds its cap
+  // (instrument cap x multiplier). R&D credits it times the difficulty's science gain.
+  const DEPLOY_RATE_DEFAULT = 5;   // ModuleGroundExperiment's constructor: ScienceModifierRate = 5 unless a scientist set it down
+  const pick = (list, level) => list[Math.min(Math.max(0, level), list.length - 1)];   // ExperienceTrait.CrewMemberExperienceLevel
+  /** ScienceModifierRate (per cent) of an instrument set down by a scientist of `level` 0..5 on EVA, or by anyone else (null or < 0). */
+  function deployRate(level) {
+    const m = CD.deployed && CD.deployed.expSkill;
+    return level === null || level === undefined || level < 0 || !m || !m.length ? DEPLOY_RATE_DEFAULT : pick(m, level) * 100;
+  }
+  /** Extra power units a solar panel or RTG makes when an engineer of `level` sets it down (0 for level 0 or anyone else). */
+  function engineerBonus(level) {
+    const m = CD.deployed && CD.deployed.powerSkill;
+    return level > 0 && m && m.length ? pick(m, level) : 0;
+  }
+  /** The diminishing-returns share for n instruments of one kind on one body (DeployedScience.GetDiminishingReturnsMultiplier):
+   *  the exact entry for n, else the last entry below n, else 1. */
+  function diminishing(n) {
+    let v = 1, exact = false;
+    for (const e of (CD.deployed && CD.deployed.returns) || []) {
+      if (e[0] > n) continue;
+      if (e[0] === n) { exact = true; v = e[1]; } else if (!exact) v = e[1];
+    }
+    return v;
+  }
+  /** Science from deployed instruments on a body. `units` lists every instrument: [{id, level}] (level = the scientist who set it
+   *  down, null for anyone else). `opts.power`: 1 = power covers the need, 0.5 = solar panels only while the station is not
+   *  loaded (the game halves the rate then), 0 = not enough power. `opts.gain` = the difficulty's science gain.
+   *  In each kind the instrument with the highest rate runs at full share and every other one at diminishing(count)
+   *  (DeployedScience.SetDiminishingScienceRate). The seismometer earns from impacts, so it has a cap but no hourly rate. */
+  function deployedScience(body, units, opts) {
+    const D = CD.deployed, b = CD.bodyScience[body];
+    opts = opts || {};
+    const power = opts.power === undefined ? 1 : opts.power, gain = opts.gain === undefined ? 1 : opts.gain;
+    const mult = b ? b.landed : 1, atmo = hasAtmosphere(body);
+    const rows = [];
+    let perHour = 0, total = 0;
+    for (const id of Object.keys((D && D.instruments) || {})) {
+      const e = D.instruments[id];
+      const ok = !(e.atmo && !atmo) && !(e.vacuum && atmo);
+      const impact = id === 'deployedSeismicSensor';
+      const mine = (units || []).filter((u) => u.id === id).map((u) => ({ level: u.level, rate: deployRate(u.level) }));
+      mine.sort((x, y) => y.rate - x.rate);
+      const n = mine.length, share = diminishing(n);
+      let hour = 0;
+      mine.forEach((u, k) => {
+        u.share = k === 0 ? 1 : share;
+        u.perHour = impact || !ok ? 0 : e.base * mult * u.rate / 100 * u.share * power;
+        hour += u.perHour;
+      });
+      const cap = e.cap * mult;
+      rows.push({
+        id: id, title: e.title, ok: ok, impact: impact, count: n, share: share, units: mine, multiplier: mult,
+        perHour: hour * gain, cap: cap * gain, hours: hour > 0 ? cap / hour : null,
+        // one full-rate instrument, for comparing kinds
+        bestPerHour: impact || !ok ? 0 : e.base * mult * gain,
+      });
+      perHour += hour * gain;
+      if (ok && n) total += cap * gain;
+    }
+    return { body: body, multiplier: mult, rows: rows, perHour: perHour, total: total };
+  }
+  /** Power units a station needs and what its panels/RTGs give: the control station, every instrument and a ground dish each need
+   *  their part's powerUnitsRequired; each solar panel or RTG gives its powerUnitsProduced plus the engineer bonus. */
+  function deployPower(instruments, dishes, makers, engineerLevel) {
+    const pu = (id, k) => { const p = partById[id]; return p && p.pu ? p.pu[k] : 0; };
+    const need = pu('DeployedCentralStation', 1) + instruments * pu('DeployedGoExOb', 1) + dishes * pu('DeployedSatDish', 1);
+    const each = pu('DeployedSolarPanel', 0) + engineerBonus(engineerLevel);
+    return { need: need, each: each, have: makers * each, makers: each > 0 ? Math.ceil(need / each) : null };
+  }
+
   // ---- strategies ------------------------------------------------------------------------------------------------
   const KEY = { Funds: 'funds', Science: 'sci', Reputation: 'rep' };
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -383,5 +456,6 @@
     available: available, techPlan: techPlan, researchable: researchable, craftNeeds: craftNeeds,
     recoveryFactor: recoveryFactor, missionFinance: missionFinance, forecast: forecast, contractEstimate: contractEstimate,
     experimentValue: experimentValue, scienceTable: scienceTable, hasAtmosphere: hasAtmosphere,
+    deployRate: deployRate, engineerBonus: engineerBonus, diminishing: diminishing, deployedScience: deployedScience, deployPower: deployPower,
   };
 });

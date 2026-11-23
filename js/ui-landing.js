@@ -228,22 +228,48 @@
     // deployed instruments
     const D = CD.deployed;
     if (D && Object.keys(D.instruments).length) {
+      const dp = s.deploy;
       const atmo = Career.hasAtmosphere(s.body);
-      const rows = Object.keys(D.instruments).map((id) => {
-        const e = D.instruments[id];
-        const part = CD.parts.find((p) => p.ground === id);
-        const ok = !(e.atmo && !atmo) && !(e.vacuum && atmo);
-        return { id: id, e: e, part: part, ok: ok };
-      });
+      const okOf = (e) => !(e.atmo && !atmo) && !(e.vacuum && atmo);
+      const countOf = (id) => (dp.counts[id] === undefined || dp.counts[id] === null ? (okOf(D.instruments[id]) ? 1 : 0) : dp.counts[id]);
+      const career = App.state.career && App.state.career.state;
+      const gain = dp.gain !== null && dp.gain !== undefined ? dp.gain : career ? career.diff.gain[1] : 1;
+      const level = dp.level === null || dp.level === undefined ? -1 : dp.level;
+      const units = [];
+      for (const id of Object.keys(D.instruments)) for (let k = 0; k < countOf(id); k++) units.push({ id: id, level: level < 0 ? null : level });
+      const res = Career.deployedScience(s.body, units, { power: dp.power, gain: gain });
+      const nInst = units.length;
+      const pw = Career.deployPower(nInst, dp.dish ? 1 : 0, 0, dp.engineer);
+      const levels = [['-1', 'Not a scientist (5%)']].concat([0, 1, 2, 3, 4, 5].map((l) => [String(l), 'Scientist, level ' + l + ' (' + fmt(Career.deployRate(l)) + '%)']));
+      const engLevels = [['0', 'Anyone else / level 0']].concat([1, 2, 3, 4, 5].map((l) => [String(l), 'Engineer, level ' + l + ' (+' + Career.engineerBonus(l) + ')']));
+      const dayH = Data.DAY / 3600, yearH = Data.YEAR / 3600;   // the home world's calendar (a planet pack can change it)
+      const hrs = (x) => (x === null ? '—' : x >= yearH ? fmt(x / yearH, 1) + ' years' : x >= dayH ? fmt(x / dayH, 1) + ' days' : fmt(x, 1) + ' h');
       kids.push(h('h4', { text: 'Deployed instruments (Breaking Ground)' }),
-        h('p', { class: 'hint', text: 'Set down from a lander, joined to an Experiment Control Station and powered (solar panel or RTG). Each makes science over time up to a cap, before the body’s own science multiplier (not applied here). Several of the same instrument on one body earn less each (the game’s table: ' + D.returns.map((r) => r[0] + ' = ×' + r[1]).join(', ') + '); the exact way that table is combined was not worked out, so plan a few different instruments rather than many of one kind. The game checks for new science every ' + D.timeDelay + ' s.' }),
+        h('p', { class: 'hint', text: 'Set down on EVA from a kerbal’s inventory within 20 m of an Experiment Control Station (it has no limit on how many it runs) and powered (solar panel or RTG). All instruments of one kind on ' + s.body + ' fill one shared subject: per hour each makes its base rate × the body’s landed multiplier (×' + res.multiplier + ' here) × the rate fixed by whoever set it down, until the subject holds its cap (cap × multiplier). The science goes home over CommNet, so the station needs a link to the KSC.' }),
+        h('div', { class: 'row' },
+          field('Set down by', select(levels, String(level), (v) => { dp.level = parseInt(v, 10); changed(); }, 'Who sets the instruments down')),
+          field('Power', select([['1', 'Enough (RTG, or solar in sunlight while you watch)'], ['0.5', 'Solar only, while you are elsewhere (half rate)'], ['0', 'Not enough power (no science)']], String(dp.power), (v) => { dp.power = parseFloat(v); changed(); }, 'Power')),
+          field('Science gain ×', num(gain, (v) => { dp.gain = v; changed(); }, { size: 5, step: 0.05, min: 0, label: 'science gain' }), career ? 'from your career; clear to follow it' : 'difficulty setting')),
         h('div', { class: 'scroll' }, h('table', {},
-          h('thead', {}, h('tr', {}, ['Instrument', 'Part', 'Price', 'Per hour', 'Cap', 'Hours to cap', 'Works on ' + s.body + '?'].map((t, n) => h('th', { class: n >= 2 && n <= 5 ? 'num' : '', text: t })))),
-          h('tbody', {}, rows.map((r) => h('tr', { class: r.ok ? '' : 'dim' },
-            h('td', { text: r.e.title.replace('Surface Deployed ', '') }), h('td', { text: r.part ? r.part.title : '—' }), h('td', { class: 'num', text: r.part ? fmt(r.part.cost) : '—' }),
-            h('td', { class: 'num', text: r.id === 'deployedSeismicSensor' ? 'per impact' : fmt(r.e.base, 3) }), h('td', { class: 'num', text: fmt(r.e.cap) }),
-            h('td', { class: 'num', text: r.id === 'deployedSeismicSensor' ? '—' : fmt(r.e.cap / r.e.base) }),
-            h('td', { text: r.ok ? 'yes' : (r.e.atmo ? 'needs an atmosphere' : 'needs no atmosphere') })))))),
+          h('thead', {}, h('tr', {}, ['Instrument', 'Part', 'Price', 'How many', 'Share of each','Science per hour', 'Total (cap)', 'Time to cap', 'Works on ' + s.body + '?'].map((t, n) => h('th', { class: n >= 2 && n <= 7 ? 'num' : '', text: t })))),
+          h('tbody', {}, res.rows.map((r) => {
+            const part = CD.parts.find((p) => p.ground === r.id);
+            const runs = !r.count ? '—' : r.count === 1 ? '100%' : '100% + ' + (r.count - 1) + ' × ' + fmt(r.share * 100) + '%';
+            return h('tr', { class: r.ok ? '' : 'dim' },
+              h('td', { text: r.title.replace('Surface Deployed ', '') }), h('td', { text: part ? part.title : '—' }), h('td', { class: 'num', text: part ? fmt(part.cost) : '—' }),
+              h('td', { class: 'num' }, num(countOf(r.id), (v) => { dp.counts[r.id] = v === null ? null : Math.max(0, Math.min(20, Math.round(v))); changed(); }, { size: 3, step: 1, min: 0, max: 20, label: 'how many ' + r.title })),
+              h('td', { class: 'num', text: runs }),
+              h('td', { class: 'num', text: r.impact ? 'per impact' : r.ok ? fmt(r.perHour, 3) : '—' }),
+              h('td', { class: 'num', text: r.ok ? fmt(r.cap, 1) : '—' }),
+              h('td', { class: 'num', text: r.impact || !r.ok ? '—' : hrs(r.hours) }),
+              h('td', { text: r.ok ? 'yes' : (D.instruments[r.id].atmo ? 'needs an atmosphere' : 'needs no atmosphere') }));
+          })))),
+        h('p', { text: 'Together: ' + fmt(res.perHour, 2) + ' science per hour, up to ' + fmt(res.total) + ' in all from the instruments that work here.' }),
+        h('p', { class: 'hint', text: 'More than one of a kind does not raise the cap, it only fills it sooner, and the extras run at a reduced share (the game’s table: ' + D.returns.map((r) => r[0] + ' of a kind = ' + fmt(r[1] * 100) + '%').join(', ') + '; the best-rated one always runs at 100%). So one of each kind is usually the better buy. The rate is fixed when the part is set down: a scientist gives ' + fmt(Career.deployRate(0)) + '–' + fmt(Career.deployRate(5)) + '% by level, anyone else ' + fmt(Career.deployRate(null)) + '%.' }),
+        h('div', { class: 'row' },
+          field('Ground dish (HG-48)', h('input', { type: 'checkbox', checked: !!dp.dish, 'aria-label': 'Ground dish', onchange: (ev) => { dp.dish = ev.target.checked ? 1 : 0; changed(); } })),
+          field('Panels/RTGs set down by', select(engLevels, String(dp.engineer || 0), (v) => { dp.engineer = parseInt(v, 10); changed(); }, 'Who sets the power parts down'))),
+        h('p', { text: 'Power: the control station' + (dp.dish ? ', the dish' : '') + ' and ' + nInst + ' instrument' + (nInst === 1 ? '' : 's') + ' need ' + pw.need + ' power unit' + (pw.need === 1 ? '' : 's') + '; each solar panel or RTG gives ' + pw.each + ', so set down ' + pw.makers + '. Solar panels give nothing at night, and while you are away the game runs a solar-only station at half rate.' }),
         h('p', { class: 'hint', text: 'Seismic science comes from impacts (the game needs an impact of at least ' + fmt(D.seismicMin) + ' J of seismic energy' + (D.seismicEnergy && D.seismicEnergy[s.body] ? '; the energy scale for ' + s.body + ' is ' + D.seismicEnergy[s.body].toExponential(2) + ' J' : '') + '). Crash a spent stage a few kilometres from the sensor.' }));
     }
     return kids;

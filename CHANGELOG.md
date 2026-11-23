@@ -2,6 +2,15 @@
 
 All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Landing tab, Breaking Ground:** deployed science is now worked out the way the game pays it. Plan how many of each instrument,
+  who sets them down (scientist level, or anyone else) and the power; the tab gives science per hour, the total and the time to
+  reach it, with the body's landed multiplier, the diminishing-returns share for several of one kind (the best one at 100%, the
+  rest at the table's share), half rate for solar-only stations while you are away, and your difficulty's science gain. A power
+  budget says how many solar panels or RTGs the station needs (engineers add power).
+
 ## [1.3.1] - 2026-11-22
 
 ### Security
