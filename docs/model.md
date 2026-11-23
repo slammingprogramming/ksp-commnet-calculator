@@ -67,7 +67,7 @@ straight line enters a sphere. The test is a port of the game's `OccluderHorizon
 * The calendar is KSP's: 6-hour days, 426-day years. A planet pack that replaces Kerbin by Earth (Real Solar System)
   switches it to 24-hour days and 365-day years.
 * **Patched conics (opt-in per vessel).** A vessel set to *follow patched conics* is carried out of a sphere of
-  influence when it reaches the edge, and onto the new body's orbit, up to 8 legs and 25 years ahead. Escape (hyperbolic)
+  influence when it reaches the edge, and onto the new body's orbit, up to 16 legs and 25 years ahead (both are settings). Escape (hyperbolic)
   orbits imported from a save always do. Planned impulsive burns (see [Launch windows and manoeuvres](launch-windows.md))
   are applied first, then the vessel follows the conic they leave it on. A vessel without the option stays on one orbit
   about its body.
@@ -95,8 +95,9 @@ orbit and spin phase. Nothing the model relies on is a guess for stock KSP.
 |---|---|
 | Plasma blackout in the relay simulation | In the game it is a transient on loaded vessels re-entering an atmosphere. It never affects an orbiting or landed vessel, so the simulation ignores it. The Reentry tab covers it for landings. |
 | Orbital perturbations | Stock KSP has none (patched conics). |
-| Powered flight | Burns are impulsive and instantaneous; there is no fuel, staging, gravity-loss or steering model, and no automatic targeting of an encounter. |
-| Other mods' signal multipliers, `ModuleRelayEnabler`, science bonuses | No verified data to model. |
+| Powered flight | Burns are impulsive by default; a burn given a duration is flown as short pulses along the velocity, but fuel, staging, steering and a rocket's real thrust curve are not simulated. The Launch windows tab finds a single burn that reaches a moon, not a full guidance solution. |
+| Other mods' signal multipliers, science bonuses | No verified data to model. A pack that multiplies every antenna (JNSQ) has a setting. |
+| The game's ore map | It is noise seeded by the save's game seed; the Network plan tab uses the body's abundance range or the figure you read off a scan. |
 
 **Things to keep in mind:**
 
@@ -106,6 +107,6 @@ orbit and spin phase. Nothing the model relies on is a guess for stock KSP.
 * The **distance pickers** give the closest and farthest separation two bodies ever reach, a worst and best case rather
   than today's distance. The "at scenario time" chip gives the actual distance.
 * The planner's search is a heuristic: it finds good, verified designs, not provably optimal ones.
-* Kopernicus binaries (Plock–Karen) are simplified.
+* OPM's Plock and Karen are treated as a SigmaBinary pair: both circle their common centre, the moon's orbit is the separation, and the period uses both masses (assumed from the mod's description; other Kopernicus binaries are not read).
 
 For how the numbers were verified, see [RESEARCH.md](RESEARCH.md).

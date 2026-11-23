@@ -216,8 +216,8 @@ test('facility upgrades: prices and what each level allows', () => {
   const pad = t.find((f) => f.id === 'LaunchPad');
   assert.equal(pad.nextCost, 75000);
   assert.equal(pad.toMax, 75000 + 282000);
-  assert.deepEqual(Career.effects('LaunchPad', 1), [['Launch mass limit', '18 t']]);
-  assert.deepEqual(Career.effects('LaunchPad', 3), [['Launch mass limit', 'unlimited']]);
+  assert.deepEqual(Career.effects('LaunchPad', 1), [['Launch mass limit', '18 t'], ['Craft size limit', '15 × 20 × 15 m']]);
+  assert.deepEqual(Career.effects('LaunchPad', 3), [['Launch mass limit', 'unlimited'], ['Craft size limit', 'unlimited']]);
   assert.deepEqual(Career.effects('MissionControl', 2).map((e) => e[1]), ['7', 'yes']);
   assert.equal(Career.effects('Administration', 2)[0][1], '3');
   s.facilities.LaunchPad = 3;
@@ -332,6 +332,129 @@ test('mission plan: a Duna trip finds a real window, dates move forward and legs
   assert.ok(p.legs[1].t0 >= p.legs[0].t1 && p.legs[1].t1 > p.legs[1].t0);
   assert.ok(p.legs[1].flight > 100 * Orb.DAY && p.legs[1].flight < 400 * Orb.DAY);
   assert.ok(p.total > 4500 && p.total < 6500, 'total ' + p.total);
-  const bad = Mission.plan(world, [{ type: 'launch', body: 'Eve', alt: 100 }], 0);
-  assert.ok(bad.error && /losses/.test(bad.error), 'thick atmospheres need an explicit loss figure');
+  const eve = Mission.plan(world, [{ type: 'launch', body: 'Eve', alt: 100 }], 0);
+  assert.ok(!eve.error && eve.total > 5000, 'thick atmospheres are simulated at a default thrust-to-weight of 1.5: ' + eve.total);
+  const bad = Mission.plan(world, [{ type: 'launch', body: 'Eve', alt: 100, twr: 0.6 }], 0);
+  assert.ok(bad.error && /losses/.test(bad.error), 'a rocket that cannot lift off gets an error asking for a loss figure');
+});
+
+test('science by signal strength: the transmitter\'s science curve adds up to 40% and never exceeds the full value', () => {
+  assert.equal(Career.transmitBonus(0), 0);
+  assert.ok(Math.abs(Career.transmitBonus(0.45) - 0.08) < 1e-9);
+  assert.ok(Math.abs(Career.transmitBonus(1) - 0.4) < 1e-9);
+  assert.ok(Career.transmitBonus(0.7) > Career.transmitBonus(0.45) && Career.transmitBonus(0.7) < Career.transmitBonus(0.81));
+  assert.ok(Math.abs(Career.transmitValue(10, 0.5, 1) - 7) < 1e-9, 'half-efficiency data at full signal pays 70%');
+  assert.equal(Career.transmitValue(10, 1, 1), 10, 'capped at the full value');
+  assert.equal(Career.transmitValue(10, 0.5, 0), 5);
+});
+
+test('launch pad and runway limits: mass 18 / 140 / none, size 15x20x15 / 28x36x28 / none, compared axis by axis', () => {
+  assert.deepEqual(Career.CRAFT_LIMITS.mass, [18, 140, null]);
+  assert.ok(Career.fitsSize([4.2, 8.1, 4.2], 1));
+  assert.ok(!Career.fitsSize([4.2, 21, 4.2], 1), 'too tall for level 1');
+  assert.ok(Career.fitsSize([4.2, 21, 4.2], 2));
+  assert.ok(Career.fitsSize([200, 200, 200], 3), 'no limit at the top level');
+  assert.ok(Career.fitsSize(null, 1), 'unknown size is not a failure');
+  const fx = Career.effects('Runway', 1).map((r) => r[0]);
+  assert.ok(fx.includes('Launch mass limit') && fx.includes('Craft size limit'));
+});
+
+test('hiring a Kerbal: the game\'s formula gives the prices players report with the original four on the roster', () => {
+  assert.equal(Career.hireCost(4, 1), 62113);
+  assert.equal(Career.hireCost(5, 1), 71031);
+  assert.ok(Math.abs(Career.hireCost(6, 1) - 79054) <= 1);
+  assert.equal(Career.hireCost(4, 0.5), 31056.5, 'the funds loss multiplier scales it');
+  const parsed = Parsers.parseCareer('GAME\n{\n  Mode = CAREER\n  ROSTER\n  {\n    KERBAL\n    {\n      name = A\n      type = Crew\n      state = Available\n    }\n    KERBAL\n    {\n      name = B\n      type = Crew\n      state = Dead\n    }\n    KERBAL\n    {\n      name = C\n      type = Applicant\n      state = Available\n    }\n  }\n}\n');
+  assert.equal(parsed.crew, 1, 'only living crew count');
+});
+
+test('records pay in five steps at the game\'s thresholds, and a save\'s best marks the ones passed', () => {
+  const s = Career.newState('normal');
+  const t = Career.recordTable(s);
+  const alt = t.find((r) => r.id === 'ALTITUDERECORD');
+  assert.deepEqual(alt.steps.map((x) => x.threshold), [500, 2000, 7000, 22000, 70000]);
+  assert.deepEqual(t.find((r) => r.id === 'SPEEDRECORD').steps.map((x) => x.threshold), [25, 80, 250, 790, 2500]);
+  assert.equal(alt.total.funds, 48000, '80000 x 0.2 x score 2 x exceptional 1.5');
+  assert.equal(alt.steps[0].funds, 9600, 'a fifth of it per step');
+  assert.equal(alt.steps[0].sci, 1, 'a unit of science per step when the share is one or less');
+  assert.equal(Career.intervalReward(3, 1, 5) + Career.intervalReward(3, 2, 5) + Career.intervalReward(3, 3, 5) + Career.intervalReward(3, 4, 5) + Career.intervalReward(3, 5, 5), 3, 'three units spread over five steps');
+  const parsed = Parsers.parseCareer('GAME\n{\n  Mode = CAREER\n  SCENARIO\n  {\n    name = ProgressTracking\n    Progress\n    {\n      RecordsAltitude\n      {\n        record = 9000\n      }\n    }\n  }\n}\n');
+  assert.equal(parsed.records.RecordsAltitude, 9000);
+  const st = Career.fromSave(parsed);
+  assert.deepEqual(Career.recordTable(st).find((r) => r.id === 'ALTITUDERECORD').steps.map((x) => x.reached), [true, true, true, false, false]);
+});
+
+test('strategies change the money a mission brings in, by the game\'s reasons', () => {
+  const s = Career.newState('normal');
+  s.strategies = [{ id: 'AppreciationCampaignCfg', factor: 1 }];
+  const base = Career.missionFinance(Career.newState('normal'), { cost: 10000, recovery: 6000, contracts: [{ label: 'c', advance: 5000, reward: 20000, sci: 2, rep: 3 }] });
+  const withS = Career.missionFinance(s, { cost: 10000, recovery: 6000, contracts: [{ label: 'c', advance: 5000, reward: 20000, sci: 2, rep: 3 }] });
+  assert.equal(base.net, 21000);
+  assert.ok(withS.net < base.net, 'the strategy turns funds into reputation');
+  assert.ok(withS.items.some((i) => i.rep > 3 && /strategies/.test(i.label)));
+  assert.equal(withS.items[0].funds, -10000, 'a cost is not converted');
+});
+
+test('contract estimates scale with the destination body\'s weight, as Contract.SetFunds does', () => {
+  const s = Career.newState('normal');
+  const type = Object.keys(CD.contracts).find((k) => CD.contracts[k].funds.reward > 0);
+  const home = Career.contractEstimate(s, type, 'trivial');
+  const far = Career.contractEstimate(s, type, 'trivial', 'Eve');
+  assert.ok(far.weight > 1 && far.reward > home.reward);
+  assert.equal(far.reward, Math.round(home.reward * far.weight), 'the weight is a plain multiplier');
+});
+
+test('craft: a multi-mode engine burns its closed-cycle mode by default and the air-breathing one on request', () => {
+  const c = Craft.parseCraft(craftText([
+    { id: 'mk1pod.v2', istg: -1, links: [1], res: {} },
+    { id: 'fuelTank', istg: -1, links: [2], res: full('fuelTank') },
+    { id: 'RAPIER', istg: 0, res: {} },
+  ]));
+  const closed = Craft.stages(c).stages.find((s) => s.engines);
+  const air = Craft.stages(c, { mode: 'atmosphere' }).stages.find((s) => s.engines);
+  assert.ok(Math.abs(closed.thrust - 180) < 1e-6, 'closed cycle thrust 180 kN');
+  assert.ok(Math.abs(air.thrust - 105) < 1e-6, 'air-breathing thrust 105 kN');
+  assert.ok(air.dv > closed.dv * 3, 'the air-breathing mode (Isp 3200) goes much further on the same fuel: ' + air.dv + ' vs ' + closed.dv);
+});
+
+test('craft: mod parts read from .cfg files get a price, a mass and a delta-v like the stock ones', () => {
+  const P = require('../js/parsers.js');
+  const cfg = [
+    'PART', '{', '  name = modTank', '  title = Mod Tank', '  mass = 1', '  cost = 3000', '  category = Propulsion', '  TechRequired = advRocketry',
+    '  RESOURCE', '  {', '    name = LiquidFuel', '    amount = 400', '    maxAmount = 400', '  }',
+    '  RESOURCE', '  {', '    name = Oxidizer', '    amount = 400', '    maxAmount = 400', '  }', '}',
+    'PART', '{', '  name = modEngine', '  title = Mod Engine', '  mass = 0.5', '  cost = 1000',
+    '  MODULE', '  {', '    name = ModuleEnginesFX', '    maxThrust = 100', '    PROPELLANT', '    {', '      name = LiquidFuel', '      ratio = 0.9', '    }',
+    '    PROPELLANT', '    {', '      name = Oxidizer', '      ratio = 1.1', '    }',
+    '    atmosphereCurve', '    {', '      key = 0 400', '      key = 1 300', '    }', '  }', '}',
+  ].join('\n');
+  const parts = P.parsePartCfg(cfg, {});
+  assert.deepEqual(Object.keys(parts).sort(), ['modEngine', 'modTank']);
+  assert.deepEqual(parts.modEngine.eng[0].isp, [400, 300]);
+  assert.equal(parts.modTank.res.LiquidFuel[1], 400);
+  assert.equal(Craft.addParts(parts), 2);
+  assert.equal(Craft.addParts({ liquidEngine: { id: 'liquidEngine', mass: 99 } }), 0, 'a stock part is never replaced');
+  const c = Craft.parseCraft(craftText([
+    { id: 'mk1pod.v2', istg: -1, links: [1], res: {} },
+    { id: 'modTank', istg: -1, links: [2], res: { LiquidFuel: [400, 400], Oxidizer: [400, 400] } },
+    { id: 'modEngine', istg: 0, res: {} },
+  ]));
+  assert.deepEqual(c.missing, []);
+  const st = Craft.stages(c).stages.find((s) => s.engines);
+  assert.ok(st.dv > 1500 && st.dv < 4000, 'mod rocket has a plausible delta-v: ' + st.dv);
+  assert.ok(Math.abs(st.thrust - 100) < 1e-9);
+});
+
+test('mission: transfers between different planet systems (Kerbin to Laythe, Mun to Duna) use the planets\' window and price the moon ends', () => {
+  const opmWorld = require('../js/world.js').createWorld({});
+  const laythe = Mission.leg(opmWorld, { type: 'transfer', from: 'Kerbin', to: 'Laythe', park: 100, capture: 100 }, 0);
+  assert.ok(!laythe.error, laythe.error);
+  assert.ok(laythe.dv > 2500 && laythe.dv < 9000, 'Kerbin to Laythe Δv ' + laythe.dv);
+  assert.ok(laythe.flight > 500 * Orb.DAY, 'a Jool trip takes more than a year of Kerbin days: ' + laythe.flight / Orb.DAY);
+  const jool = Mission.leg(opmWorld, { type: 'transfer', from: 'Kerbin', to: 'Jool', park: 100, capture: 100 }, 0);
+  assert.ok(laythe.dv > jool.dv * 0.5);
+  const fromMun = Mission.leg(opmWorld, { type: 'transfer', from: 'Mun', to: 'Duna', park: 30, capture: 100 }, 0);
+  const fromKerbin = Mission.leg(opmWorld, { type: 'transfer', from: 'Kerbin', to: 'Duna', park: 100, capture: 100 }, 0);
+  assert.ok(!fromMun.error && fromMun.dv > 0);
+  assert.ok(Math.abs(fromMun.dv - fromKerbin.dv) < 1500, 'leaving from the Mun is within a km/s of leaving from Kerbin orbit');
 });

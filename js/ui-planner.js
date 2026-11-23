@@ -411,6 +411,15 @@
       const resSel = h('select', { 'aria-label': 'Map resolution' }, RES.map((r, i) => h('option', { value: String(i), text: r[0] })));
       resSel.value = String(coverageCard.res === undefined ? 1 : coverageCard.res);
       resSel.addEventListener('change', () => { coverageCard.res = parseInt(resSel.value, 10); });
+      // what sits on the probe at every spot, and how long each averaged window is (the model's two free choices)
+      const direct = Data.antennas.filter((a) => a.pack === 'stock' && a.type === 'direct');
+      const antSel = h('select', { 'aria-label': 'Antenna of the probe at every spot' }, direct.map((a) => h('option', { value: a.id, text: a.name || a.id })));
+      antSel.value = coverageCard.ant || 'stock:longAntenna';
+      if (!antSel.value) antSel.value = 'stock:longAntenna';
+      antSel.addEventListener('change', () => { coverageCard.ant = antSel.value; });
+      const spanSel = h('select', { 'aria-label': 'Length of each window' }, [1, 3, 7].map((d) => h('option', { value: String(d), text: d + '-day windows' })));
+      spanSel.value = String(coverageCard.days || 3);
+      spanSel.addEventListener('change', () => { coverageCard.days = parseInt(spanSel.value, 10); });
       const go = h('button', { class: 'btn', type: 'button' }, 'Compute coverage map');
       const canvas = h('canvas', { class: 'map-canvas', role: 'img', 'aria-label': 'Map of connection uptime across the body’s surface' });
       const note = h('p', { class: 'hint' });
@@ -422,18 +431,20 @@
         // include planned relays as untracked nodes
         const nodes = P.nodes.filter((n) => !n.planned).concat(withPlan.value === 'with' ? plan.planned : []);
         const rs = RES[parseInt(resSel.value, 10)] || RES[1];
-        const gen = Pl.coverageGen(Object.assign({}, P, { nodes: nodes }), bodyId, rs[1], rs[2], rs[3], 3 * Data.DAY);
+        const days = parseInt(spanSel.value, 10) || 3;
+        const gen = Pl.coverageGen(Object.assign({}, P, { nodes: nodes }), bodyId, rs[1], rs[2], rs[3], days * Data.DAY, [{ id: antSel.value, count: 1 }]);
         (function tick() {
           const stop = Date.now() + 30;
           let r;
           do { r = gen.next(); } while (!r.done && Date.now() < stop);
           if (!r.done) { setTimeout(tick, 0); return; }
           go.disabled = false;
-          note.textContent = 'Uptime of a lander with a small direct antenna (Communotron 16) at each spot, averaged over ' + rs[3] + ' 3-day windows spread across the look-ahead period. It shows what your relay network gives any future landing site.';
+          const antName = (direct.find((a) => a.id === antSel.value) || {}).name || antSel.value;
+          note.textContent = 'Uptime of a lander with one ' + antName + ' at each spot, averaged over ' + rs[3] + ' ' + days + '-day windows spread across the look-ahead period. It shows what your relay network gives any future landing site.';
           drawMap(canvas, r.value, bodyId);
         })();
       });
-      card.append(h('h3', { text: 'Surface coverage' }), h('div', { class: 'row' }, bodySel, withPlan, resSel, go), note, canvas);
+      card.append(h('h3', { text: 'Surface coverage' }), h('div', { class: 'row' }, bodySel, withPlan, resSel, antSel, spanSel, go), note, canvas);
       return card;
     }
 

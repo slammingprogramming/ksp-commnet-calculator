@@ -218,3 +218,14 @@ test('retracted antennas are ignored and an NFE reflector adds AddedRange x Feed
   const nofeed = Core.vesselStats([{ id: 'stock:HighGainAntenna', count: 1, reflector: 'nfe:reflector-huge-1' }], lk, 1);
   assert.equal(nofeed.own, 15e9);
 });
+
+test('relay enabler (mod part): direct antennas relay too, as CommNetVessel.UpdateComm does when the part is powered', () => {
+  const lookup = (id) => ({ d: { id: 'd', type: 'direct', power: 5e6, exp: 0.75, combinable: true }, r: { id: 'r', type: 'relay', power: 2e6, exp: 0.75, combinable: true }, big: { id: 'big', type: 'direct', power: 5e9, exp: 0, combinable: false } }[id]);
+  const plain = Core.vesselStats([{ id: 'big', count: 1 }, { id: 'r', count: 1 }], lookup, 1);
+  assert.equal(plain.relay, 2e6, 'without the part only the relay antenna relays');
+  const on = Core.vesselStats([{ id: 'big', count: 1 }, { id: 'r', count: 1 }], lookup, 1, { relayEnabler: true });
+  assert.equal(on.relay, 5e9, 'with it the stronger direct antenna relays');
+  assert.equal(on.own, plain.own, 'its own connection does not change');
+  const weak = Core.vesselStats([{ id: 'd', count: 1 }, { id: 'r', count: 1 }], lookup, 1, { relayEnabler: true });
+  assert.ok(weak.relay >= 2e6, 'never worse than the relay antenna');
+});

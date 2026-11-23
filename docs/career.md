@@ -99,4 +99,5 @@ under the table; they are not yet applied to the contract rewards or the recover
 ## What it does not do
 * Contract rewards you estimate on the Missions tab are base values times the difficulty gain: the real offers vary with
   the body and your progress, so type in the figure from the contract card when you have it.
-* Kerbal hiring and salaries, funds from selling science, and part failures are not modelled.
+* **Hiring Kerbals** shows the price of the next hires from the number on the roster (the game's formula, read from its code); salaries, funds from selling science, and part failures are not modelled.
+* **Records** (altitude, speed, distance, depth) pay in five steps; the milestone card lists the thresholds and rewards and marks the steps your loaded save has passed. Active strategies apply to launches, recoveries and contract money as the game applies them.

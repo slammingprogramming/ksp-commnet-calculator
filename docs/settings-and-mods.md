@@ -16,6 +16,8 @@ The panel at the top of every tab. It also shows a one-line summary when collaps
 | **Range modifier** | scales every vessel's antenna power (Normal ×1, Moderate ×0.8, Hard ×0.65) |
 | **DSN modifier** | scales the DSN's rating |
 | **Occlusion (vacuum / atmosphere)** | scales the blocking sphere of airless bodies and of bodies with an atmosphere (Normal 0.9 / 0.75, Moderate 1.0 / 0.85, Hard 1.0 / 1.0) |
+| **Planet pack antenna power ×** | for a pack that rescales every antenna (JNSQ: 4, with DSN ×4: the JNSQ button sets both) |
+| **Patched conics: years followed, most legs** | how far ahead a vessel on a patched-conic path is followed (25 years and 16 legs by default; more is slower) |
 | **Outer Planets Mod bodies** | adds Sarnus, Urlum, Neidon, Plock and their moons, and moves Eeloo to orbit Sarnus, as the mod does |
 | **Extra ground stations** | the difficulty option *Enable Extra Groundstations*: six more stations on Kerbin (the five anomaly dishes and Baikerbanur), all at the DSN rating |
 | **Other launch sites allowed** | the game's *Allow Other Launch Sites* option |

@@ -350,3 +350,36 @@ test('planet pack with a rescaled home world: display names, gas giants and the 
   assert.ok(Math.abs(w.calendar.day - 43200) / 43200 < 0.02, 'a 12-hour home day');
   assert.ok(require('../js/planner.js').isGas(w.index.get('Giant2')));
 });
+
+test('a pack body\'s Atmosphere node gives the Reentry and Energy tabs its air', () => {
+  const cfg = [
+    '@Kopernicus:FOR[Pack]', '{', '  Body', '  {', '    name = Wetworld', '    Template', '    {', '      name = Duna', '    }', '    Properties', '    {', '      radius = 400000', '      geeASL = 0.9', '      rotationPeriod = 30000', '    }',
+    '    Orbit', '    {', '      referenceBody = Kerbol', '      semiMajorAxis = 30000000000', '      eccentricity = 0', '    }',
+    '    Atmosphere', '    {', '      enabled = True', '      altitude = 50000', '      adiabaticIndex = 1.3', '      atmosphereMolarMass = 0.03', '      shockTemperatureMultiplier = 1.2',
+    '      temperatureCurve', '      {', '        key = 0 300 0 -0.002', '        key = 50000 200 0 0', '      }',
+    '      pressureCurve', '      {', '        key = 0 200 0 -0.003', '        key = 25000 20 -0.0003 -0.0003', '        key = 50000 0 0 0', '      }', '    }', '  }', '}',
+  ].join('\n');
+  const r = P.parseKopernicus(cfg, stock);
+  assert.equal(r.bodies.length, 1, r.warnings.join('; '));
+  const at = r.bodies[0].atmosphere;
+  assert.ok(at, 'the curves were read');
+  assert.equal(at.depth, 50000);
+  assert.equal(at.molarMass, 0.03);
+  assert.equal(at.gamma, 1.3);
+  assert.equal(at.shock, 1.2);
+  assert.deepEqual(at.temp[0], [0, 300, 0, -0.002]);
+  assert.equal(at.pressure.length, 3);
+  // it flows into the world and the reentry module: the pack's air, not Duna's
+  const world = createWorld({ extraBodies: r.bodies });
+  const b = world.index.get('Wetworld');
+  assert.equal(b.atmosphere.depth, 50000);
+  const R = require('../js/reentry.js');
+  R.usePack({ Wetworld: b.atmosphere });
+  try {
+    assert.ok(R.hasAtmosphere('Wetworld'));
+    const a = R.air('Wetworld', 0);
+    near(a.pressure, 200, 1e-9);
+    assert.ok(a.density > 2 && a.density < 4, 'dense air: ' + a.density);
+  } finally { R.usePack({}); }
+  assert.ok(!R.hasAtmosphere('Wetworld'), 'gone again once the pack is off');
+});

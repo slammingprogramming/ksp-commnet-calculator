@@ -57,6 +57,7 @@ How the game pays for deployed science (read from its code; [research notes](RES
   loaded (you are elsewhere) and only solar panels power it, the game runs it at half rate. Parts must be within 20 m of the station; there is no limit on how many it runs.
 * **Getting it home:** the station sends its data over CommNet when it has a link to the KSC (the control station has its own
   antenna); the science is credited times your difficulty's science gain (the tab takes it from your career, or set it yourself).
+* On a body with air, the crash speeds listed come from a drop through the body's atmosphere (the Reentry tab's point-mass model) for a light probe (ballistic coefficient 300 kg/m²) and a dense slug (3000 kg/m²), not the airless fall.
 * The **seismometer** pays per impact, not per hour. Below the table, give the mass of what crashes (a spent stage with its
   leftover fuel), its speed at the surface and how far from the sensor it hits, and the tab gives the science from that impact
   and how many such impacts fill the subject. The game's rule: the impact's energy (½ × mass × speed²) divided by the body's

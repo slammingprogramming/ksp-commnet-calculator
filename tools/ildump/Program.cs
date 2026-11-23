@@ -93,12 +93,28 @@ class P
             default: return "?0x" + t.ToString("x2");
         }
     }
+    // "(this) ret(params)" for the method header: enough to tell overloads apart.
+    static string SigText(MethodDefinition m)
+    {
+        try
+        {
+            var sr = md.GetBlobReader(m.Signature);
+            byte hdr = sr.ReadByte();
+            if ((hdr & 0x10) != 0) sr.ReadCompressedInteger();
+            int n = sr.ReadCompressedInteger();
+            string ret = ElemType(ref sr);
+            var ps = new List<string>();
+            for (int i = 0; i < n; i++) ps.Add(ElemType(ref sr));
+            return ((hdr & 0x20) != 0 ? "instance " : "static ") + ret + "(" + string.Join(", ", ps) + ")";
+        }
+        catch { return ""; }
+    }
     static void Dump(MethodDefinition m, string label)
     {
         if (m.RelativeVirtualAddress == 0) return;
         var body = pe.GetMethodBody(m.RelativeVirtualAddress);
         var il = body.GetILBytes();
-        Console.WriteLine("  == " + label + "  (IL " + il.Length + " bytes)");
+        Console.WriteLine("  == " + label + "  (IL " + il.Length + " bytes)" + "  " + SigText(m));
         int i = 0;
         while (i < il.Length)
         {

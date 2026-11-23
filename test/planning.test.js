@@ -288,3 +288,18 @@ test('science table: biome-dependent experiments are flagged and comet or astero
   const seis = rows.find((r) => r.id === 'seismicScan' && r.key === 'landed');
   assert.equal(seis.biomeDependent, true);
 });
+
+test('mission: the simulated gravity-turn ascent gives plausible Kerbin losses and a hard failure when thrust is too low', () => {
+  const Mi = require('../js/mission.js'), Wd = require('../js/world.js');
+  const w = Wd.createWorld({});
+  const kerbin = w.index.get('Kerbin');
+  const a = Mi.ascent(kerbin, { twr: 1.5, alt: 80000 });
+  assert.ok(a && a.dv > 3000 && a.dv < 3600, 'Kerbin ascent about 3200 m/s, got ' + (a && a.dv));
+  assert.ok(Math.abs(a.apo - 80000) < 8000);
+  const thin = Mi.ascent(kerbin, { twr: 0.8, alt: 80000 });
+  assert.equal(thin, null, 'a rocket that cannot lift off finds no ascent');
+  const duna = Mi.ascent(w.index.get('Duna'), { twr: 1.5, alt: 100000 });
+  assert.ok(duna.dv < a.dv, 'Duna is easier than Kerbin');
+  const leg = Mi.leg(w, { type: 'launch', body: 'Kerbin', alt: 80, twr: 1.5 }, 0);
+  assert.ok(leg.dv > 3000 && /simulated/.test(leg.note));
+});

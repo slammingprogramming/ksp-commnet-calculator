@@ -24,7 +24,7 @@
     const st = App.state;
     const nw = st.network;
     const sc = st.scenario;
-    const simOpts = () => ({ world: App.world, lookup: App.lookup, settings: App.simSettings(), nodes: Scn.simNodes(), trajectory: { t0: sc.ut, horizon: 25 * Data.YEAR } });
+    const simOpts = () => ({ world: App.world, lookup: App.lookup, settings: App.simSettings(), nodes: Scn.simNodes(), trajectory: App.trajectoryOpts(sc.ut) });
 
     /* ---- right now ---- */
     const nowCard = h('div', { class: 'card' });

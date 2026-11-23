@@ -98,3 +98,16 @@ test('burns: a prograde burn from low Kerbin orbit raises the apoapsis; a big on
   // burns outside the horizon are ignored
   assert.equal(Traj.build(world, 'Kerbin', orbit, 0, 1000, [{ t: 5000, prograde: 100 }]).length, 1);
 });
+
+test('finite burn: a burn spread over its duration reaches nearly the same orbit as the impulse, a little less efficiently', () => {
+  const Traj2 = require('../js/trajectory.js'), W2 = require('../js/world.js'), Orb3 = require('../js/orbits.js');
+  const w = W2.createWorld({});
+  const kerbin = w.index.get('Kerbin');
+  const orbit = Orb3.orbitFromAltitudes(kerbin, 100000, 100000, 0, 0, 0, 0);
+  const imp = Traj2.build(w, 'Kerbin', orbit, 0, 40000, [{ t: 5000, prograde: 400 }]);
+  const fin = Traj2.build(w, 'Kerbin', orbit, 0, 40000, [{ t: 5000, prograde: 400, duration: 300 }]);
+  assert.ok(fin.length > imp.length, 'a finite burn is several pulses');
+  const last = (s) => s[s.length - 1].orbit;
+  const apoImp = last(imp).a * (1 + last(imp).e), apoFin = last(fin).a * (1 + last(fin).e);
+  assert.ok(apoFin < apoImp * 1.0001 && apoFin > apoImp * 0.9, 'same ballpark, not higher than the impulse: ' + apoFin + ' vs ' + apoImp);
+});

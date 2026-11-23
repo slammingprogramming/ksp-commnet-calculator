@@ -65,7 +65,46 @@
         h('div', { class: 'field' }, h('label', { text: 'Parking orbit altitude' }), parkIn), h('div', { class: 'field' }, h('label', { text: 'Capture orbit altitude' }), capIn),
         h('div', { class: 'field' }, h('label', { text: 'Search' }), yearsSel)),
       h('div', { style: 'margin-top:10px' }, go)), out);
-    fillTo();
+    // ---- encounter targeting: the one burn from a circular orbit that reaches a moon ----
+    const enc = tf.enc || (tf.enc = { body: 'Kerbin', target: 'Mun', alt: '100 km', capture: '30 km', days: 2 });
+    const encOut = h('div', {});
+    const encTarget = h('select', { 'aria-label': 'Moon to reach' });
+    const moonsOf = (id) => App.world.bodies.filter((x) => x.parentBody && x.parentBody.id === id);
+    function fillEnc() {
+      const list = moonsOf(enc.body);
+      encTarget.replaceChildren(...list.map((b) => h('option', { value: b.id, text: b.name })));
+      if (!list.some((b) => b.id === enc.target)) enc.target = list.length ? list[0].id : '';
+      encTarget.value = enc.target;
+    }
+    encTarget.addEventListener('change', () => { enc.target = encTarget.value; App.saveState(); });
+    const encBody = App.bodySelect(enc.body, (v) => { enc.body = v; App.saveState(); fillEnc(); }, {});
+    const encField = (label, key, hint) => { const i = h('input', { type: 'text', value: enc[key], size: 9, spellcheck: 'false', 'aria-label': label, placeholder: hint }); i.addEventListener('input', () => { enc[key] = i.value; App.saveState(); }); return i; };
+    const encGo = h('button', { class: 'btn', type: 'button' }, 'Find the burn');
+    encGo.addEventListener('click', () => {
+      const body = App.world.index.get(enc.body), alt = Core.parseDistance(enc.alt), cap = String(enc.capture).trim() ? Core.parseDistance(enc.capture) : null;
+      if (!body || !enc.target || !(alt > 0) || (cap !== null && !(cap > 0))) { encOut.replaceChildren(h('p', { class: 'bad', text: 'Pick a body with moons and enter altitudes such as 100 km.' })); return; }
+      const orbit = Orb.orbitFromAltitudes(body, alt, alt, 0, 0, 0, 0);
+      const days = Math.max(0.25, Math.min(40, parseFloat(enc.days) || 2));
+      const rows = Tr.targetBurn(App.world, enc.body, orbit, enc.target, st.scenario.ut, days * Data.DAY, { captureAlt: cap });
+      if (!rows || !rows.length) { encOut.replaceChildren(h('p', { class: 'hint', text: 'No burn found in that search. Try more days.' })); return; }
+      encOut.replaceChildren(
+        h('div', { class: 'scroll' }, h('table', {},
+          h('thead', {}, h('tr', {}, ['Burn at', 'Prograde', 'Normal', 'Radial', 'Burn', 'Flight', 'Arrives at', 'Arrival speed', 'Capture burn'].map((t, i) => h('th', { class: i > 0 ? 'num' : '', text: t })))),
+          h('tbody', {}, rows.map((r, i) => h('tr', { class: i === 0 ? 'best' : '' },
+            h('td', { text: Orb.formatUT(r.t) }), h('td', { class: 'num', text: r.prograde.toFixed(0) + ' m/s' }), h('td', { class: 'num', text: r.normal.toFixed(0) + ' m/s' }), h('td', { class: 'num', text: r.radial.toFixed(0) + ' m/s' }),
+            h('td', { class: 'num', text: r.dv.toFixed(0) + ' m/s' }), h('td', { class: 'num', text: Orb.formatDuration(r.flight) }), h('td', { text: Orb.formatUT(r.arrive) }),
+            h('td', { class: 'num', text: r.vinfArrive.toFixed(0) + ' m/s' }), h('td', { class: 'num', text: cap === null ? 'fly-by' : r.captureDv.toFixed(0) + ' m/s' })))))),
+        h('p', { class: 'hint', text: 'A single impulsive burn (a Lambert arc from your orbit to the centre of the moon at arrival), split into the manoeuvre node axes. Enter it in the Scenario tab as a burn at that time (prograde, normal, radial) and the Tracker shows the path with patched conics. It aims at the centre of the moon, so expect to trim the periapsis with a small correction; the circular parking orbit is assumed equatorial and in the moon’s direction of travel.' }));
+    });
+    root.append(h('div', { class: 'card' },
+      h('h2', { text: 'Encounter burn' }),
+      h('p', { class: 'hint', text: 'From a circular parking orbit, the burn that sends you to a moon of the same body: when to light it and how much prograde, normal and radial it needs.' }),
+      h('div', { class: 'row' },
+        h('div', { class: 'field' }, h('label', { text: 'Orbiting' }), encBody), h('div', { class: 'field' }, h('label', { text: 'Parking orbit altitude' }), encField('Parking orbit altitude for the encounter burn', 'alt', '100 km')),
+        h('div', { class: 'field' }, h('label', { text: 'Moon to reach' }), encTarget), h('div', { class: 'field' }, h('label', { text: 'Capture altitude' }), encField('Capture altitude at the moon', 'capture', 'blank = fly-by')),
+        h('div', { class: 'field' }, h('label', { text: 'Search days' }), encField('Days to search for the burn', 'days', '2'))),
+      h('div', { style: 'margin-top:10px' }, encGo)), encOut);
+    fillTo(); fillEnc();
     return { update: function () {} };
   }
 

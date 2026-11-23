@@ -55,7 +55,7 @@ that had no fix are retried after another fix lands.
 * **Does the design survive other difficulty settings?** re-runs the scenario with and without the plan on Normal,
   Moderate and Hard. Higher occlusion multipliers make planets block more of the sky, so a design that only just works on
   Normal can fail on Hard.
-* **Surface coverage** maps the uptime of a lander with a small direct antenna (a Communotron 16) across a body's surface,
+* **Surface coverage** maps the uptime of a lander with a direct antenna you choose (a Communotron 16 by default; 1-, 3- or 7-day windows) across a body's surface,
   with or without the planned relays, averaged over three 3-day windows.
 
 ## What if I add a relay?

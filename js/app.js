@@ -68,7 +68,7 @@
     return {
       v: 1,
       settings: {
-        dsnLevel: 2, dsnCustom: '50G', rangeMod: 1, dsnMod: 1, packs: {}, bodyPacks: { opm: false },
+        dsnLevel: 2, dsnCustom: '50G', rangeMod: 1, dsnMod: 1, packPower: 1, patchedYears: 25, patchedLegs: 16, packs: {}, bodyPacks: { opm: false },
         occVac: 0.9, occAtm: 0.75, extraStations: false, makingHistory: false, allowOtherLaunchSites: true, sunOccludes: true, atmoBlocks: false,
       },
       chain: {
@@ -85,10 +85,10 @@
         from: 'Kerbin', farKind: 'dsn', farVessel: { antennas: [{ id: 'stock:RelayAntenna50', count: 1 }] }, farCustom: '50G',
         vessel: { antennas: [{ id: 'stock:RelayAntenna50', count: 1 }] }, role: 'own', mode: 'distance', at: 'max',
       },
-      custom: { packs: [], antennas: [], bodyPacks: [] },
+      custom: { packs: [], antennas: [], bodyPacks: [], power: {}, parts: {} },
       scenario: { nodes: [], ut: 0, nextId: 1 },
       tracker: { focus: 'Kerbol', speed: 3600, horizon: 426 * 21600, view: 'top' },
-      transfer: { from: 'Kerbin', to: 'Duna', park: '100 km', capture: '100 km', years: 4 },
+      transfer: { from: 'Kerbin', to: 'Duna', park: '100 km', capture: '100 km', years: 4, enc: { body: 'Kerbin', target: 'Mun', alt: '100 km', capture: '30 km', days: 2 } },
       network: { horizon: 426 * 21600, stations: {}, custom: [] },
       reentry: { body: 'Kerbin', mode: 'orbit', pe: 30000, ap: 12000000, vinf: 1000, speed: 2300, angle: 6, ballistic: 400, link: 0, heat: 1 },
       planner: { horizon: 2, target: 99.5, minSignal: 20, designHard: false, robust: true, skip: {}, targets: {}, limits: { relays: 0, mass: 0, cost: 0 }, whatif: { body: 'Kerbin', n: 3, alt: '2863 km', inc: 0, antennas: [{ id: 'stock:RelayAntenna100', count: 1 }] } },
@@ -96,8 +96,8 @@
       missions: { crafts: [], list: [], sel: 0, nextId: 1 },
       landing: { body: 'Mun', landTilt: 10, stayTilt: 5, share: 0.5, maxLat: 90, minAlt: null, maxAlt: null, dry: true, biomes: [], avoid: [], near: null, nearKm: 500, varietyKm: 100, rank: 'flat', pick: null, open: {},
         deploy: { counts: {}, level: 0, power: 1, engineer: 0, dish: 0, gain: null, impact: { mass: 5, speed: 550, km: null, done: 0 } } },
-      netplan: { sites: [], nextId: 1, mode: 'stages', horizon: 1, target: 99.5, minSignal: 20, useCareer: true, lastBody: 'Mun', place: { body: 'Mun', isp: 345, dry: 5, maxLat: 90 } },
-      energy: { where: 'orbit', body: 'Mun', alt: 80000, inc: 0, lat: 0, lon: 0, orientation: 50, atmosphere: 100, margin: 15, burstMin: 0, days: 30, useCareer: true, allowUnlock: false,
+      netplan: { sites: [], nextId: 1, mode: 'stages', horizon: 1, target: 99.5, minSignal: 20, useCareer: true, launchFunds: 0, income: 0, incomeSci: 0, lastBody: 'Mun', place: { body: 'Mun', isp: 345, dry: 5, maxLat: 90, mine: { drill: 'RadialDrill', n: 2, abundance: null, engineer: 0, isru: 'ISRU' } } },
+      energy: { where: 'orbit', body: 'Mun', alt: 80000, inc: 0, lat: 0, lon: 0, orientation: 50, atmosphere: 100, heat: true, stored: [], margin: 15, burstMin: 0, days: 30, useCareer: true, allowUnlock: false,
         loads: [{ pre: 'core:probeCoreOcto2_v2', label: 'Probodobodyne OKTO2 (control)', n: 1, ec: 0.03, duty: 100 }, { pre: 'wheel:sasModule', label: 'Small Inline Reaction Wheel (turning)', n: 1, ec: 0.25, duty: 10 }] },
       saveInfo: null,
       ui: { tab: 'chain' },
@@ -161,10 +161,17 @@
     });
     Data.setCalendar(world.calendar.day, world.calendar.daysPerYear);
     Orb.setCalendar(world.calendar.day, world.calendar.daysPerYear);
+    // the air of a planet pack's bodies (Reentry and Energy tabs); stock bodies keep the game's own
+    const air = {};
+    world.bodies.forEach((b) => { if (b.atmosphere) air[b.id] = b.atmosphere; });
+    window.KSPReentry.usePack(air);
   }
   rebuildWorld();
   const enabledBodies = () => world.bodies.filter((b) => !b.star);
-  const ctx = () => ({ lookup: lookup, rangeModifier: state.settings.rangeMod, dsnModifier: state.settings.dsnMod });
+  // A planet pack can scale every antenna (JNSQ multiplies antennaPower by 4); this folds it into the range modifier the maths already takes.
+  const trajectoryOpts = (t0) => ({ t0: t0, horizon: (state.settings.patchedYears || 25) * Data.YEAR, maxSegments: state.settings.patchedLegs || 16 });
+  const effRange = () => state.settings.rangeMod * (state.settings.packPower > 0 ? state.settings.packPower : 1);
+  const ctx = () => ({ lookup: lookup, rangeModifier: effRange(), dsnModifier: state.settings.dsnMod });
   const dsnNode = () => ({ kind: 'dsn', level: state.settings.dsnLevel, custom: Core.parsePower(state.settings.dsnCustom) });
   const dsnPower = () => Core.dsnPower(dsnNode(), state.settings.dsnMod);
   const defaultAntennaId = () => 'stock:RelayAntenna50';
@@ -392,7 +399,7 @@
       el: h('div', { class: 'field' }, kind, vesselBox, customBox),
       power() {
         if (model.farKind === 'dsn') return dsnPower();
-        if (model.farKind === 'vessel') return Core.vesselStats(model.farVessel.antennas, lookup, state.settings.rangeMod).relay;
+        if (model.farKind === 'vessel') return Core.vesselStats(model.farVessel.antennas, lookup, effRange()).relay;
         return Core.parsePower(model.farCustom);
       },
     };
@@ -401,7 +408,7 @@
   /** Settings for the time-domain simulator, from the current game settings. */
   function simSettings() {
     return {
-      rangeMod: state.settings.rangeMod, dsnPower: dsnPower(), occVac: state.settings.occVac, occAtm: state.settings.occAtm,
+      rangeMod: effRange(), dsnPower: dsnPower(), occVac: state.settings.occVac, occAtm: state.settings.occAtm,
       atmosphereBlocks: !!state.settings.atmoBlocks, sunOccludes: state.settings.sunOccludes !== false,
       extraStations: !!state.settings.extraStations, makingHistory: !!state.settings.makingHistory, allowOtherLaunchSites: state.settings.allowOtherLaunchSites !== false,
       stationOverride: state.network.stations, customStations: state.network.custom,
@@ -459,6 +466,14 @@
     numInput(dsnIn, 'dsnMod');
     numInput(occVacIn, 'occVac');
     numInput(occAtmIn, 'occAtm');
+    const packPowerIn = h('input', { type: 'number', min: 0.05, step: 0.05, value: s.packPower === undefined ? 1 : s.packPower, 'aria-label': 'Planet pack antenna power multiplier' });
+    packPowerIn.addEventListener('input', () => { const v = parseFloat(packPowerIn.value); if (v > 0) { s.packPower = v; commit(); } });
+    // how far ahead a vessel on a patched-conic path (an escape, a transfer) is followed: years, and how many hand-overs between bodies
+    const yearsIn = h('input', { type: 'number', min: 1, max: 500, step: 1, value: s.patchedYears || 25, 'aria-label': 'Years followed for patched-conic paths' });
+    yearsIn.addEventListener('input', () => { const v = parseFloat(yearsIn.value); if (v >= 1 && v <= 500) { s.patchedYears = v; commit(); } });
+    const legsIn = h('input', { type: 'number', min: 2, max: 64, step: 1, value: s.patchedLegs || 16, 'aria-label': 'Most patched-conic legs per vessel' });
+    legsIn.addEventListener('input', () => { const v = parseInt(legsIn.value, 10); if (v >= 2 && v <= 64) { s.patchedLegs = v; commit(); } });
+    const jnsqBtn = h('button', { class: 'btn small', type: 'button', title: 'JNSQ patches every antenna to four times its stock power and recommends a DSN modifier of 4', onclick: () => { s.packPower = 4; s.dsnMod = 4; packPowerIn.value = 4; dsnIn.value = 4; syncPresets(); commit(); } }, 'JNSQ');
     syncPresets();
     const diffBlock = h('div', {},
       h('h3', { text: 'Difficulty' }),
@@ -467,7 +482,12 @@
         h('div', { class: 'field' }, h('label', { text: 'Range modifier ×' }), rangeIn),
         h('div', { class: 'field' }, h('label', { text: 'DSN modifier ×' }), dsnIn),
         h('div', { class: 'field' }, h('label', { text: 'Occlusion (vacuum) ×' }), occVacIn),
-        h('div', { class: 'field' }, h('label', { text: 'Occlusion (atmosphere) ×' }), occAtmIn)));
+        h('div', { class: 'field' }, h('label', { text: 'Occlusion (atmosphere) ×' }), occAtmIn)),
+      h('div', { class: 'row', style: 'margin-top:8px' },
+        h('div', { class: 'field' }, h('label', { text: 'Planet pack antenna power ×' }), packPowerIn, h('span', { class: 'hint', text: 'for a pack that scales every antenna (JNSQ: 4, with DSN ×4)' })),
+        h('div', { class: 'field' }, h('label', { text: 'Preset' }), jnsqBtn),
+        h('div', { class: 'field' }, h('label', { text: 'Patched conics: years followed' }), yearsIn, h('span', { class: 'hint', text: 'longer = slower' })),
+        h('div', { class: 'field' }, h('label', { text: 'Patched conics: most legs' }), legsIn)));
 
     // Systems + packs
     const opm = h('input', { type: 'checkbox', checked: !!s.bodyPacks.opm });
@@ -671,6 +691,7 @@
         parts.push(h('span', {}, ' · as relay ', h('b', { text: st.relay > 0 ? Core.formatPower(st.relay) : 'none' })));
         if (st.exp) parts.push(h('span', { text: ' · exponent ' + st.exp.toFixed(3) }));
         if (s.rangeMod !== 1) parts.push(h('span', { text: ' · range ×' + s.rangeMod }));
+        if (s.packPower > 0 && s.packPower !== 1) parts.push(h('span', { text: ' · pack antennas ×' + s.packPower }));
         if (st.usedBuiltin) parts.push(h('span', { class: 'warn', text: ' · using built-in 5k' }));
         if (st.unknown) parts.push(h('span', { class: 'bad', text: ' · ' + st.unknown + ' unknown antenna(s)' }));
         if (!last && st.relay === 0) parts.push(h('span', { class: 'bad', text: ' · cannot relay (no relay antenna)' }));
@@ -694,8 +715,18 @@
           h('small', { class: 'hint', text: nodes.map((n, i) => nodeName(i)).join('  ⇄  ') }))));
       out.push(meter(total));
 
+      // share of the next 8 years in which another body blocks the straight line between the two bodies of each hop (the picker's bodies; cached per pair and setting)
+      const blockedShare = (j) => {
+        const f = hops[j].from, t = hops[j].to;
+        if (!f || !t || f === t) return null;
+        const key = [f, t, state.scenario.ut, state.settings.occVac, state.settings.occAtm, state.settings.sunOccludes, state.settings.atmoBlocks, world.bodies.length].join('|');
+        const cache = world._sightCache || (world._sightCache = {});
+        if (!cache[key]) cache[key] = world.sightReport(f, t, { occVac: state.settings.occVac, occAtm: state.settings.occAtm, sunOccludes: state.settings.sunOccludes !== false, atmosphereBlocks: !!state.settings.atmoBlocks }, state.scenario.ut, 8 * Data.YEAR, 1500) || { blocked: null };
+        return cache[key].blocked;
+      };
       const rows = ev.hops.map((hp, j) => {
         const a = nodeName(j), b = nodeName(j + 1);
+        const bl = valid[j] ? blockedShare(j) : null;
         const failing = valid[j] && hp.signal === 0;
         if (hp.noRelayA) note('“' + a + '” has no relay antenna, so it can’t pass a signal along. Direct antennas only help a vessel’s own link.');
         if (hp.noRelayB) note('“' + b + '” has no relay antenna, so it can’t pass a signal along. Direct antennas only help a vessel’s own link.');
@@ -705,10 +736,11 @@
           h('td', { class: 'num' }, valid[j] ? Core.formatDistance(hp.distance) : '–'),
           h('td', { class: 'num' }, hp.range > 0 ? Core.formatDistance(hp.range) : '–'),
           h('td', { class: 'num', style: valid[j] ? 'font-weight:700;color:' + sigInk(hp.signal) : '' }, valid[j] ? Core.formatPercent(hp.signal) : '–'),
+          h('td', { class: 'num', title: 'Share of the next 8 years in which a body gets in the way of the straight line between the two bodies chosen under the distance (centre to centre)' }, bl === null || bl === undefined ? '–' : (bl * 100).toFixed(bl > 0 && bl < 0.1 ? 1 : 0) + '%'),
           h('td', {}, valid[j] && (hp.signal < 0.5) ? h('button', { class: 'btn small', type: 'button', onclick: () => toFinder(j, dist[j]) }, 'Find antennas') : null));
       });
       out.push(h('div', { class: 'scroll' }, h('table', {},
-        h('thead', {}, h('tr', {}, h('th', { text: 'Hop' }), h('th', { class: 'num', text: 'Distance' }), h('th', { class: 'num', text: 'Max range' }), h('th', { class: 'num', text: 'Signal' }), h('th'))),
+        h('thead', {}, h('tr', {}, h('th', { text: 'Hop' }), h('th', { class: 'num', text: 'Distance' }), h('th', { class: 'num', text: 'Max range' }), h('th', { class: 'num', text: 'Signal' }), h('th', { class: 'num', text: 'Line blocked' }), h('th'))),
         h('tbody', {}, rows))));
       if (ev.hops.length > 1 && allValid && ev.connected) out.push(h('p', { class: 'hint', style: 'margin-top:8px', text: 'Path signal is the product of every hop’s signal. Weakest hop: ' + (ev.weakest.index + 1) + ' (' + Core.formatPercent(ev.weakest.signal) + ').' }));
 
@@ -805,14 +837,14 @@
       out.push(h('div', { class: 'callout' },
         'For ', h('b', { text: f.target + '%' }), ' at ', h('b', { text: Core.formatDistance(d) }), ' against a ', h('b', { text: Core.formatPower(farPower) }),
         ' far end you need a vessel power of at least ', h('b', { text: Core.formatPower(needed) }),
-        ' (max range ', Core.formatDistance(Core.rangeForSignal(d, t)), ')', s.rangeMod !== 1 ? ' after the range modifier' : '', '.'));
+        ' (max range ', Core.formatDistance(Core.rangeForSignal(d, t)), ')', effRange() !== 1 ? ' after the range modifier' : '', '.'));
       const pool = ANT.filter((a) => packOn(a.pack) && !a.builtin && (f.includeGround || !a.ground));
-      const rows = Core.findSetups({ antennas: pool, farPower: farPower, distance: d, target: t, role: f.role, maxCount: f.maxCount, rangeModifier: s.rangeMod, sort: f.sort, limit: 30 });
+      const rows = Core.findSetups({ antennas: pool, farPower: farPower, distance: d, target: t, role: f.role, maxCount: f.maxCount, rangeModifier: effRange(), sort: f.sort, limit: 30 });
       if (!rows.length) {
         const best = pool.filter((a) => f.role !== 'relay' || a.type === 'relay').reduce((m, a) => (a.power > (m ? m.power : 0) ? a : m), null);
         out.push(h('p', { class: 'bad', text: 'No combination of up to ' + f.maxCount + ' copies reaches ' + f.target + '%.' }));
         if (best) {
-          const p = Core.combine([{ power: best.power, exp: best.exp, count: f.maxCount }]).power * s.rangeMod;
+          const p = Core.combine([{ power: best.power, exp: best.exp, count: f.maxCount }]).power * effRange();
           out.push(h('p', { class: 'hint', text: 'Best single-type stack: ' + f.maxCount + '× ' + best.name + ' gives ' + Core.formatPercent(Core.signalStrength(d, Core.linkRange(p, farPower))) + '. Try a stronger relay at the far end, more copies, or a shorter hop.' }));
         }
       } else {
@@ -880,7 +912,7 @@
 
     function update() {
       const s = state.settings;
-      const st = Core.vesselStats(r.vessel.antennas, lookup, s.rangeMod);
+      const st = Core.vesselStats(r.vessel.antennas, lookup, effRange());
       const mine = r.role === 'relay' ? st.relay : st.own;
       const farP = far.power();
       const out = [h('h2', { text: 'Signal by body' })];
@@ -1299,6 +1331,7 @@
     get state() { return state; },
     get world() { return world; },
     lookup: lookup,
+    effRange: effRange,
     rev: () => revision,
     enabledAntennas: () => ANT.filter((a) => packOn(a.pack)),
     packOn: packOn,
@@ -1311,7 +1344,7 @@
     antennaEditor: antennaEditor,
     bodySelect: bodySelect,
     meter: meter,
-    simSettings: simSettings,
+    simSettings: simSettings, trajectoryOpts: trajectoryOpts,
     start: init,
   };
 })();

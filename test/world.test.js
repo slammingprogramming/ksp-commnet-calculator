@@ -175,3 +175,18 @@ test('orbits: hyperbolic propagation and state-vector round trip (ellipses, hype
   const a = Orb.position(p, 1000, [0, 0, 0]), b = Orb.position(p, 1001, [0, 0, 0]), v = Orb.velocity(p, 1000.5, [0, 0, 0]);
   for (let k = 0; k < 3; k++) near(b[k] - a[k], v[k], 1e-5);
 });
+
+test('binary pair (OPM Plock and Karen): the pair circles its common centre, the separation is the moon\'s orbit, the period uses both masses', () => {
+  const Orb2 = require('../js/orbits.js');
+  const w = createWorld({ packs: { opm: true }, bodyPacks: { opm: true } });
+  const plock = w.index.get('Plock'), karen = w.index.get('Karen');
+  if (!plock || !karen) return;                                   // OPM bodies absent in this build of the world options: nothing to check
+  assert.equal(karen.binary, true);
+  const f = karen.gm / (karen.gm + plock.gm);
+  const pos = w.positions(1e6);
+  const sep = Math.hypot(pos[karen.idx * 3] - pos[plock.idx * 3], pos[karen.idx * 3 + 1] - pos[plock.idx * 3 + 1], pos[karen.idx * 3 + 2] - pos[plock.idx * 3 + 2]);
+  assert.ok(Math.abs(sep - 2457800) < 1, 'the two stay 2,457,800 m apart: ' + sep);
+  assert.ok(f > 0.05 && f < 0.15);
+  const single = Orb2.prepare(karen.orbit, plock.gm).period;
+  assert.ok(karen.orbitalPeriod < single, 'the pair orbits faster with both masses');
+});

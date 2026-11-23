@@ -15,7 +15,7 @@
   'use strict';
 
   const GAME_VERSION = '1.12.5';
-  const APP_VERSION = '1.6.0'; // keep equal to package.json (a test checks it)
+  const APP_VERSION = '1.7.0'; // keep equal to package.json (a test checks it)
 
   const TECH = {
     start: 'Start',
@@ -286,6 +286,8 @@
    * pressure in kPa. molarMass kg/mol, gamma = adiabatic index, shock = shockTemperatureMultiplier, depth = atmosphere height (m). */
   /** Bodies with no surface to land on (stock + Outer Planets); a pack body built from one of these as its template is one too. */
   const GAS_GIANTS = ['Jool', 'Sarnus', 'Urlum', 'Neidon'];
+  // Moons that form a SigmaBinary pair with their parent (OPM's Plock and Karen): both circle their common centre of mass
+  const BINARIES = { Karen: 'Plock' };
 
   const ATMOSPHERES = {
     Kerbin: { depth: 70000, molarMass: 0.0289644, gamma: 1.4, shock: 1,
@@ -349,7 +351,7 @@
     BODY_PACKS: BODY_PACKS,
     bodies: bodies,
     STATIONS: STATIONS,
-    ATMOSPHERES: ATMOSPHERES, GAS_GIANTS: GAS_GIANTS,
+    ATMOSPHERES: ATMOSPHERES, GAS_GIANTS: GAS_GIANTS, BINARIES: BINARIES,
     SUPPORT: SUPPORT,
     G0: G0,
     // Calendar: 6-hour days, 426-day years (stock). setCalendar changes it when a planet pack replaces Kerbin by Earth.

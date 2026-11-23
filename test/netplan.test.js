@@ -187,7 +187,7 @@ test('station orbits: the body\'s low and high space bands with their science mu
   assert.ok(o.every((x) => x.dvDown > 300 && x.dvUp > 300 && x.period > 1000));
   assert.ok(o.every((x) => x.dvDown > 0 && x.dvUp > 0), 'both legs priced like the Missions tab');
   const k = Net.stationOptions(world, 'Kerbin', []);
-  assert.ok(k.every((x) => x.dvUp === null), 'Kerbin has no default ascent allowance in the leg model for an arbitrary station orbit');
+  assert.ok(k.every((x) => x.dvUp > 3000), 'Kerbin ascent to a station orbit is the simulated gravity turn (thrust-to-weight 1.5)');
   assert.deepEqual(Net.stationOptions(world, 'Nowhere', []), []);
 });
 
@@ -199,7 +199,8 @@ test('lander budget: Tsiolkovsky for the trip, and the ore that refills the asce
   near(b.propTrip, prop(b.dvTrip), 1e-9);
   near(b.oreForUp * CD.resources.Ore.density, b.propUp, 1e-9, 'tonnes of ore = tonnes of propellant');
   near(b.refuelHours, b.oreForUp / 0.5 / 3600, 1e-9);
-  assert.ok(Net.landerBudget(world, 'Duna', 30000).error, 'a thick atmosphere has no default ascent allowance');
+  const duna = Net.landerBudget(world, 'Duna', 30000);
+  assert.ok(!duna.error && duna.dvUp > 1000 && duna.dvUp < 2500, 'Duna ascent comes from the simulated gravity turn: ' + duna.dvUp);
 });
 
 test('base candidates: flat ground scored by how well it sees the network; near side beats far side with no relays', () => {
@@ -223,7 +224,7 @@ test('where to earn: moons and planets ranked by science per delta-v; thick atmo
   }
   const mun = e.find((x) => x.body === 'Mun'), duna = e.find((x) => x.body === 'Duna');
   assert.ok(mun.dv > 2000 && mun.dv < 3500 && mun.first > 0 && mun.total >= mun.first);
-  assert.equal(duna.partial, true);
+  assert.equal(duna.partial, false, 'Duna is priced with the simulated ascent now');
   assert.ok(duna.dv > 0);
   assert.equal(mun.partial, false);
 });
@@ -310,4 +311,32 @@ test('great circle and aim point agree', () => {
   assert.equal(p, 0);
   near(Career.greatCircle(0, 0, 0, 90, R), Math.PI / 2 * R, 1e-6);
   near(Career.greatCircle(0, 0, 90, 0, R), Math.PI / 2 * R, 1e-6);
+});
+
+test('mining: drills dig efficiency x abundance, crew bonus per star, converter is the cap, Jool has no ore', () => {
+  const m = Net.mining('Mun', { abundance: 10, drills: [{ id: 'RadialDrill', n: 6 }], engineer: 0, isru: 'ISRU', propTonnes: 10 });
+  assert.equal(m.error, undefined);
+  near(m.drillOre, 6 * 1.5 * 0.1 * (0.05 + 1 * 0.2), 1e-12, 'six Drill-O-Matics at 10% with a zero-star engineer');
+  near(m.converterOre, 0.5 * 0.25, 1e-12);
+  assert.equal(m.at.limit, 'converter', 'the Convert-O-Tron 250 eats less than six drills dig here');
+  assert.equal(Net.mining('Mun', { abundance: 10, drills: [{ id: 'RadialDrill', n: 2 }], engineer: 0 }).at.limit, 'drills');
+  near(m.at.tonnesPerHour, 0.5 * 0.25 * (0.45 + 0.55) / 0.5 * 0.005 * 3600, 1e-9);
+  assert.ok(m.at.hours > 0 && isFinite(m.at.hours));
+  const none = Net.mining('Mun', { abundance: 10, drills: [{ id: 'RadialDrill', n: 6 }], engineer: null });
+  assert.ok(none.at.rate < m.at.rate / 4, 'with no engineer on board everything runs at 5%');
+  const star = Net.mining('Mun', { drills: [{ id: 'RadialDrill', n: 1 }], engineer: 5 });
+  assert.equal(star.abundance, 8, 'default is the middle of the 1-15% range');
+  assert.ok(Net.mining('Jool', {}).error);
+  assert.ok(Net.mining('Mun', { isru: 'nope' }).error);
+});
+
+test('funding: launch cost per relay is added, and expected income counts toward what the career can pay', () => {
+  const nodes = [{ antennas: [] }, { antennas: [] }];
+  const c = Net.relayCost(nodes, () => null, 1000, 5000);
+  assert.equal(c.launchFunds, 10000);
+  assert.equal(c.funds, 2000 + 10000);
+  const f = Net.fundingCheck({ funds: 1000, sci: 10 }, { totals: { funds: 5000, science: 20 } }, { income: 3000, sci: 15 });
+  assert.equal(f.haveFunds, 4000);
+  assert.equal(f.shortFunds, 1000);
+  assert.equal(f.shortScience, 0);
 });

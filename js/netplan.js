@@ -12,9 +12,9 @@
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
     module.exports = factory(require('./data.js'), require('./orbits.js'), require('./core.js'), require('./sim.js'), require('./planner.js'), require('./career.js'),
-      require('./career-data.js'), require('./landing.js'), require('./mission.js'));
-  } else root.KSPNetPlan = factory(root.KSPData, root.KSPOrbits, root.KSPCore, root.KSPSim, root.KSPPlanner, root.KSPCareer, root.KSPCareerData, root.KSPLanding, root.KSPMission);
-})(typeof self !== 'undefined' ? self : this, function (Data, Orb, Core, Sim, Pl, Career, CD, Landing, Mission) {
+      require('./career-data.js'), require('./landing.js'), require('./mission.js'), require('./energy-data.js'));
+  } else root.KSPNetPlan = factory(root.KSPData, root.KSPOrbits, root.KSPCore, root.KSPSim, root.KSPPlanner, root.KSPCareer, root.KSPCareerData, root.KSPLanding, root.KSPMission, root.KSPEnergyData);
+})(typeof self !== 'undefined' ? self : this, function (Data, Orb, Core, Sim, Pl, Career, CD, Landing, Mission, ED) {
   'use strict';
 
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -137,10 +137,12 @@
     for (const id of ['probeCoreOcto2_v2', 'batteryBankMini', 'solarPanels5', 'solarPanels5']) { const p = CD.parts.find((x) => x.id === id); sum += p ? p.cost : 0; }
     return sum || 2400;
   }
-  function relayCost(nodes, lookup, bus) {
+  /** `launchFunds` is what one launch costs (a relay goes up on its own rocket): type it in, or take the price of a rocket imported on the Missions tab. */
+  function relayCost(nodes, lookup, bus, launchFunds) {
     let mass = 0, antenna = 0;
     for (const n of nodes) for (const a of n.antennas || []) { const r = lookup(a.id); if (r) { mass += (r.mass || 0) * a.count; antenna += (r.cost || 0) * a.count; } }
-    return { count: nodes.length, antennaMass: mass, antennaFunds: antenna, busFunds: nodes.length * bus, funds: antenna + nodes.length * bus };
+    const launch = nodes.length * (launchFunds || 0);
+    return { count: nodes.length, antennaMass: mass, antennaFunds: antenna, busFunds: nodes.length * bus, launchFunds: launch, funds: antenna + nodes.length * bus + launch };
   }
 
   /* ---------- the generator ---------- */
@@ -227,7 +229,7 @@
         }
       }
       const planned = plan.planned.map((n) => Object.assign(clone(n), { stage: st }));
-      const cost = relayCost(planned, lookup, bus);
+      const cost = relayCost(planned, lookup, bus, P.launchFunds);
       const unlockFunds = (upgrade ? upgrade.funds : 0) + (dsn && dsn.funds ? dsn.funds : 0);
       spentFunds += cost.funds + unlockFunds; spentScience += upgrade ? upgrade.science : 0;
       const per = active.map((s) => {
@@ -246,7 +248,7 @@
       built = built.concat(planned.map((n) => Object.assign(clone(n), { stage: st })));
       yield st / maxStage;
     }
-    return { stages: stages, totals: { funds: spentFunds, science: spentScience, relays: built.length, worstStage: Math.min.apply(null, stages.map((x) => x.worst)) }, relays: built, bus: bus };
+    return { stages: stages, totals: { funds: spentFunds, launchFunds: built.length * (P.launchFunds || 0), science: spentScience, relays: built.length, worstStage: Math.min.apply(null, stages.map((x) => x.worst)) }, relays: built, bus: bus };
   }
 
   function partsOfAntennas(ids, antennas) {
@@ -316,6 +318,36 @@
     };
   }
 
+  /** Ore on a body and what it takes to turn it into propellant. The game's ore map is procedural noise seeded by the save's game seed, so the abundance at one
+   *  spot is not known here: the body's range comes from Ore.cfg (stock: 1 to 15 percent everywhere except the Sun and Jool, which have none), the middle of the range
+   *  is the default and you can enter what a scan shows. A surface drill digs Efficiency x abundance ore per second (ModuleResourceHarvester.PrepareRecipe) and every
+   *  converter or drill is multiplied by a crew factor: base + (1 + level) x factor with an engineer of that star level on board, just the base (0.05) with none
+   *  (BaseConverter.GetCrewEfficiencyBonus; the Drill-O-Matic and Convert-O-Tron both use 0.05 and 0.2). A converter's input and output scale together, so the
+   *  fill time is set by whichever is smaller: the ore the drills dig or the ore the converter eats.
+   *  opts: abundance (percent), drills [{id, n}], engineer (null = none, else the star level 0..5), isru (part id), propTonnes (what to make). Heat and ore storage are not modelled. */
+  function mining(bodyId, opts) {
+    opts = opts || {};
+    const O = ED.ore, dist = O.bodies[bodyId] || O.bodies.default;
+    if (!dist || !(dist.max > 0) || !(dist.chance > 0)) return { error: bodyId + ' has no ore in the stock game' };
+    const crew = (p) => (opts.engineer === null || opts.engineer === undefined ? p.bonus : p.bonus + (1 + opts.engineer) * p.factor);
+    const abundance = opts.abundance == null ? (dist.min + dist.max) / 2 : opts.abundance;
+    const drills = (opts.drills || []).filter((d) => O.drills[d.id] && d.n > 0);
+    const isru = O.isru[opts.isru || 'ISRU'];
+    if (!isru) return { error: 'unknown converter ' + opts.isru };
+    const dug = (a) => drills.reduce((t, d) => t + d.n * O.drills[d.id].eff * (a / 100) * crew(O.drills[d.id]), 0);   // ore units per second
+    const ec = drills.reduce((t, d) => t + d.n * O.drills[d.id].ec, 0) + isru.ec * crew(isru);                      // charge per second (the drills draw their full rate, the converter in proportion)
+    const eats = isru.ore * crew(isru);                                                                              // ore units per second the converter can take
+    const result = (a) => {
+      const supply = dug(a), used = Math.min(supply, eats);
+      const unitsPerOre = isru.lf + isru.ox, rate = (used * unitsPerOre) / isru.ore;                               // propellant units per second (LF + Ox together)
+      const tonnes = (CD.resources.LiquidFuel.density * 1) ;                                                       // a unit weighs the same for both
+      const tps = rate * tonnes;
+      return { supply: supply, used: used, rate: rate, tonnesPerHour: tps * 3600, hours: opts.propTonnes ? opts.propTonnes / (tps * 3600) : null, limit: supply < eats ? 'drills' : 'converter' };
+    };
+    return { body: bodyId, abundance: abundance, range: [dist.min, dist.max], drillOre: dug(abundance), converterOre: eats, ec: ec, at: result(abundance), low: result(dist.min), high: result(dist.max),
+      note: 'Ore concentration is procedural and differs per save; use a surface scan for the real figure at your site.' };
+  }
+
   /**
    * Candidate base or mine sites on a body: the flattest ground with biome variety (Landing.find), each scored for how well it sees
    * the network with the relays you give (or none: just the DSN), and for how cheap it is to reach from orbit (low latitude).
@@ -382,15 +414,20 @@
   }
 
   /** What a plan costs against what the career holds: funds and science, and what is short. */
-  function fundingCheck(state, result) {
+  /** Funds and science the plan needs against what the career holds, plus income you expect before it is built (contracts and the like; `extra.income`
+   *  funds and `extra.sci`, passed through the active strategies as a contract reward would be). */
+  function fundingCheck(state, result, extra) {
     const have = state || { funds: 0, sci: 0 };
     const funds = result.totals.funds, sci = result.totals.science;
-    return { funds: funds, science: sci, haveFunds: have.funds, haveScience: have.sci, shortFunds: Math.max(0, funds - have.funds), shortScience: Math.max(0, sci - have.sci) };
+    let inFunds = (extra && extra.income) || 0, inSci = (extra && extra.sci) || 0;
+    if ((inFunds || inSci) && state && state.strategies) { const e = Career.strategyEffect(state.strategies, 'ContractReward', { funds: inFunds, sci: inSci, rep: 0 }); inFunds = e.total.funds; inSci = e.total.sci; }
+    const hf = have.funds + inFunds, hs = have.sci + inSci;
+    return { funds: funds, science: sci, haveFunds: hf, haveScience: hs, incomeFunds: inFunds, incomeScience: inSci, shortFunds: Math.max(0, funds - hf), shortScience: Math.max(0, sci - hs) };
   }
 
   return {
     KINDS: KINDS, TERRAIN: TERRAIN, POWER_NEED: POWER_NEED, loadout: loadout, siteNodes: siteNodes, autoStage: autoStage,
     antennaStatus: antennaStatus, unlockCost: unlockCost, busCost: busCost, relayCost: relayCost, planGen: planGen, runSync: Pl.runSync,
-    highGround: highGround, stationOptions: stationOptions, landerBudget: landerBudget, baseCandidates: baseCandidates, earnTable: earnTable, fundingCheck: fundingCheck,
+    highGround: highGround, stationOptions: stationOptions, landerBudget: landerBudget, mining: mining, baseCandidates: baseCandidates, earnTable: earnTable, fundingCheck: fundingCheck,
   };
 });

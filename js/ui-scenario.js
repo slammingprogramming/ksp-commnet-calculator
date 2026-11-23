@@ -34,12 +34,12 @@
     const b = w.index.get(n.loc.body);
     if (!b) return null;
     if (n.loc.type === 'landed') {
-      return { id: n.id, name: n.name, tracked: n.tracked, planned: n.planned, group: n.group, antennas: n.antennas, loc: { type: 'landed', body: b.id, lat: n.loc.lat, lon: n.loc.lon, alt: n.loc.alt || 0 } };
+      return { id: n.id, name: n.name, tracked: n.tracked, planned: n.planned, group: n.group, antennas: n.antennas, relayEnabler: !!n.relayEnabler, loc: { type: 'landed', body: b.id, lat: n.loc.lat, lon: n.loc.lon, alt: n.loc.alt || 0 } };
     }
     // An imported conic (escape trajectory, transfer) carries its elements; otherwise they come from altitudes.
     const orbit = n.loc.elements ? n.loc.elements : Orb.orbitFromAltitudes(b, n.loc.pe, n.loc.ap, n.loc.i, n.loc.lan, n.loc.w, n.loc.phase);
     return {
-      id: n.id, name: n.name, tracked: n.tracked, planned: n.planned, group: n.group, antennas: n.antennas,
+      id: n.id, name: n.name, tracked: n.tracked, planned: n.planned, group: n.group, antennas: n.antennas, relayEnabler: !!n.relayEnabler,
       loc: { type: 'orbit', body: b.id, orbit: orbit, patched: !!n.loc.patched, burns: n.loc.burns || [] },
     };
   }
@@ -271,12 +271,13 @@
           inp.addEventListener('change', () => rerender()); // refresh the total once the field is left
           return h('label', { class: 'inline', style: 'color:var(--text)' }, label + ' ', inp);
         };
-        return h('div', { class: 'row', style: 'align-items:center' }, ut, dv('prograde', 'prograde m/s'), dv('normal', 'normal m/s'), dv('radial', 'radial m/s'),
+        const dur = h('label', { class: 'inline', style: 'color:var(--text)', title: 'Burn time in seconds: 0 = an instant impulse; otherwise the burn is flown in short pulses centred on the time' }, 'lasts s ', h('input', { type: 'number', min: 0, max: 86400, step: 'any', value: bn.duration || 0, 'aria-label': 'burn duration in seconds', onchange: (e) => { const v = parseFloat(e.target.value); if (isFinite(v) && v > 0) bn.duration = Math.min(86400, v); else delete bn.duration; changed(); } }));
+        return h('div', { class: 'row', style: 'align-items:center' }, ut, dv('prograde', 'prograde m/s'), dv('normal', 'normal m/s'), dv('radial', 'radial m/s'), dur,
           h('button', { class: 'btn small ghost', type: 'button', onclick: () => { list.splice(i, 1); if (!list.length) delete n.loc.burns; rerender(); } }, 'Remove'));
       });
       const total = list.reduce((s, b) => s + Math.hypot(b.prograde || 0, b.normal || 0, b.radial || 0), 0);
       return h('div', { class: 'burns' },
-        h('div', { class: 'hint', text: 'Manoeuvres: impulsive burns at a time (prograde along the velocity, normal out of the orbital plane, radial away from the body). After the last burn the vessel follows its patched conics, so a transfer, an escape or a capture shows up in the Tracker and in every link calculation.' }),
+        h('div', { class: 'hint', text: 'Manoeuvres: burns at a time, instant by default or flown over the seconds you give (prograde along the velocity, normal out of the orbital plane, radial away from the body). After the last burn the vessel follows its patched conics, so a transfer, an escape or a capture shows up in the Tracker and in every link calculation.' }),
         ...rows,
         h('div', { class: 'row' },
           h('button', { class: 'btn small', type: 'button', onclick: () => { (n.loc.burns = n.loc.burns || []).push({ t: sc.ut + 3600, prograde: 0, normal: 0, radial: 0 }); rerender(); } }, '＋ Add a burn'),
@@ -331,6 +332,8 @@
         h('input', { type: 'checkbox', checked: !!n.loc.patched, onchange: (e) => { if (e.target.checked) n.loc.patched = true; else delete n.loc.patched; rerender(); } }), 'Follow patched conics (escape and encounter, no more burns)') : null;
       const msgs = checkNode(n).map((m) => h('div', { class: m.level === 'bad' ? 'bad' : m.level === 'warn' ? 'warn' : 'hint', style: 'font-size:0.85rem', text: m.text }));
 
+      const enabler = h('label', { class: 'inline', style: 'color:var(--text);display:flex;margin-top:6px', title: 'A mod part (CommNet.ModuleRelayEnabler) that, while it has power, lets the vessel relay with its direct antennas too. No stock part has one.' },
+        h('input', { type: 'checkbox', checked: !!n.relayEnabler, onchange: (e) => { if (e.target.checked) n.relayEnabler = true; else delete n.relayEnabler; rerender(); } }), 'Has a powered relay-enabler part (mods): its direct antennas relay too');
       return h('div', { class: 'node ' + (n.planned ? 'relay' : n.tracked ? 'endpoint' : 'dsn') },
         h('div', { class: 'node-head' }, name,
           h('label', { class: 'inline', style: 'color:var(--text)', title: 'Track this node’s connection to the DSN' }, tracked, 'Track'),
@@ -340,7 +343,7 @@
             h('button', { class: 'btn small ghost danger', type: 'button', onclick: () => { sc.nodes.splice(idx, 1); rerender(); } }, 'Remove'))),
         h('div', { class: 'row' }, h('div', { class: 'field' }, h('label', { text: 'Location' }), type), h('div', { class: 'field' }, h('label', { text: n.loc.type === 'orbit' ? 'Orbits' : 'On' }), body), h('div', { class: 'field' }, h('label', { text: 'Or' }), tpl)),
         h('div', { class: 'row', style: 'margin-top:8px' }, fields),
-        summary, patched, n.loc.type === 'orbit' ? burnsEditor(n) : null, msgs.length ? h('div', {}, msgs) : null,
+        summary, patched, enabler, n.loc.type === 'orbit' ? burnsEditor(n) : null, msgs.length ? h('div', {}, msgs) : null,
         h('div', { class: 'field', style: 'margin-top:8px' }, h('label', { text: 'Antennas' }), App.antennaEditor(n.antennas, changed)));
     }
 
@@ -424,7 +427,7 @@
   const simNodes = () => App.state.scenario.nodes.map(toSimNode).filter(Boolean);
   function getSim() {
     if (cacheRev !== App.rev() || !cacheSim) {
-      cacheSim = Sim.createSim({ world: App.world, lookup: App.lookup, settings: App.simSettings(), nodes: simNodes(), trajectory: { t0: App.state.scenario.ut, horizon: 25 * Data.YEAR } });
+      cacheSim = Sim.createSim({ world: App.world, lookup: App.lookup, settings: App.simSettings(), nodes: simNodes(), trajectory: App.trajectoryOpts(App.state.scenario.ut) });
       cacheRev = App.rev();
     }
     return cacheSim;

@@ -35,7 +35,9 @@ test('sunlight in a low Kerbin orbit: a third of it in the planet\'s shadow, non
   near(p.dark.max, eclipse * p.cycle, p.cycle * 0.03);
   near(p.tracking.min, p.share.min * p.flux.mean, 0.03);
   // a panel that does not track gets the orientation factor on top
-  near(En.lightProfile(world, orbit('Kerbin', 100000), { orientation: 0.25 }).fixed.min / p.tracking.min, 0.25, 0.01);
+  near(En.lightProfile(world, orbit('Kerbin', 100000), { orientation: 0.25, heat: false }).fixed.min / En.lightProfile(world, orbit('Kerbin', 100000), { heat: false }).tracking.min, 0.25, 0.01);
+  // a panel turned away from the sun runs cooler, so it keeps a little more of its output than the angle alone says
+  assert.ok(En.lightProfile(world, orbit('Kerbin', 100000), { orientation: 0.25 }).fixed.min / p.tracking.min > 0.25);
 });
 
 test('a moon\'s eclipses come from its planet and from the real geometry', () => {
@@ -52,7 +54,11 @@ test('on the ground: half the time lit, a flat panel gets the sine of the sun\'s
   const k = En.lightProfile(world, { type: 'landed', body: 'Kerbin', lat: 0, lon: 0, alt: 0 });
   near(k.share.mean, 0.5, 0.03);
   near(k.cycle, 21600, 200, 'a Kerbin solar day is its 6 hours');
-  near(k.fixed.mean / k.tracking.mean, 2 / Math.PI, 0.05, 'the mean of sin over the lit half');
+  // on a world without air the flat panel gets the plain mean of the sine of the sun's height over the lit half
+  const vac = En.lightProfile(world, { type: 'landed', body: 'Mun', lat: 0, lon: 0, alt: 0 }, { heat: false });
+  near(vac.fixed.mean / vac.tracking.mean, 2 / Math.PI, 0.05, 'the mean of sin over the lit half');
+  // with air the low sun is dimmed more than the high sun, so the high sun counts for more in the average
+  assert.ok(k.fixed.mean / k.tracking.mean > 2 / Math.PI + 0.01);
   const mun = En.lightProfile(world, { type: 'landed', body: 'Mun', lat: 0, lon: 0, alt: 0 });
   assert.ok(mun.cycle > 100000 && mun.dark.max > 50000, 'a long Munar night: ' + mun.dark.max + ' s');
 });
@@ -137,4 +143,200 @@ test('antennas draw charge only while sending: packet cost over packet interval'
   assert.ok(cat.some((c) => c.id === 'core:probeCoreOcto2_v2' && c.ec === 0.03));
   assert.ok(cat.some((c) => c.id === 'isru:ISRU' && c.ec === 30));
   assert.ok(cat.some((c) => c.id === 'drill:RadialDrill'));
+});
+
+test('light through the air: the game\'s rule (k / (k + density x air mass x 0.15))', () => {
+  const kerbin = world.index.get('Kerbin'), rho = 1.2230948;
+  near(En.atmosphereFactor(kerbin, 0, 1, rho), 0.85, 0.001, 'overhead sun at sea level: 1 - solarInsolationAtHome');
+  near(En.atmosphereFactor(kerbin, 0, 0.5, rho), 0.7412, 0.002, 'sun 30 degrees up');
+  near(En.atmosphereFactor(kerbin, 0, 0.05, rho), 0.348, 0.01, 'sun near the horizon');
+  assert.ok(En.atmosphereFactor(kerbin, 20000, 1, rho) > 0.99, 'thin air higher up');
+  assert.equal(En.atmosphereFactor(world.index.get('Mun'), 0, 1, rho), 1, 'no air, no dimming');
+  const k = En.lightProfile(world, { type: 'landed', body: 'Kerbin', lat: 0, lon: 0, alt: 0 });
+  assert.ok(k.air.dense && k.air.factor.mean > 0.7 && k.air.factor.mean < 0.8, 'average over the lit day: ' + k.air.factor.mean);
+  const m = En.lightProfile(world, { type: 'landed', body: 'Mun', lat: 0, lon: 0, alt: 0 });
+  assert.ok(!m.air.dense && m.air.factor.mean === 1);
+  assert.ok(En.lightProfile(world, orbit('Kerbin', 100000)).air.factor.mean === 1, 'in orbit the air is not in the way');
+});
+
+test('panel heat: the game\'s temperature curve and a plate estimate', () => {
+  near(En.heatEfficiency(300), 1, 1e-6);
+  near(En.heatEfficiency(4), 1.2, 1e-6, 'colder than 300 K gives more');
+  assert.ok(En.heatEfficiency(600) < 0.75 && En.heatEfficiency(600) > 0.65);
+  assert.ok(En.heatEfficiency(2600) <= 0.01 + 1e-9);
+  near(En.plateTemperature(1, 1, 2), 331, 2, 'a sun-facing plate at Kerbin\'s distance, two faces radiating');
+  near(En.plateTemperature(12, 1, 2) / En.plateTemperature(1, 1, 2), Math.pow(12, 0.25), 0.01);
+  const moho = En.lightProfile(world, { type: 'space', body: 'Moho' });
+  const cool = En.lightProfile(world, { type: 'space', body: 'Moho' }, { heat: false });
+  assert.ok(moho.tracking.min < cool.tracking.min * 0.9, 'panels lose output near Moho: ' + moho.tracking.min + ' vs ' + cool.tracking.min);
+  assert.ok(moho.heat.tmax > 500);
+  const eeloo = En.lightProfile(world, { type: 'space', body: 'Eeloo' });
+  assert.ok(eeloo.tracking.min > En.lightProfile(world, { type: 'space', body: 'Eeloo' }, { heat: false }).tracking.min, 'a cold panel makes a little more');
+});
+
+test('charge a part already carries, and electric engines', () => {
+  assert.equal(ED.stored.probeCoreOcto2_v2, 5);
+  assert.ok(ED.stored.mk1pod_v2 > 0, 'command pods carry charge');
+  near(ED.engines.ionEngine.ec, 8.74, 0.01, 'the ion engine draws about 8.7 charge a second at full thrust, as the game says');
+  const cat = En.loadCatalogue();
+  assert.ok(cat.some((c) => c.id === 'eng:ionEngine' && Math.abs(c.ec - 8.74) < 0.01));
+  assert.ok(En.storedCatalogue().some((c) => c.id === 'mk1pod_v2'));
+  const prof = En.lightProfile(world, orbit('Kerbin', 100000));
+  const loads = [{ label: 'x', ec: 5, duty: 1 }];
+  const plain = En.design({ profile: prof, loads: loads, state: null });
+  const withPod = En.design({ profile: prof, loads: loads, state: null, stored: 5000 });
+  const batCount = (d) => d.options.find((o) => o.kind === 'solar').parts.slice(1).reduce((q, p) => q + p.n, 0);
+  assert.ok(batCount(plain) > 0 && batCount(withPod) === 0, 'batteries already on board replace parts');
+});
+
+const { parsePowerCfg, mergePower } = require('../js/parsers.js');
+const dens = { XenonGas: 0.0001, LiquidFuel: 0.005, Oxidizer: 0.005 };
+
+test('importing a mod\'s power parts', () => {
+  const cfg = [
+    'PART',
+    '{',
+    '  name = modPanel',
+    '  title = Mod Panel',
+    '  mass = 0.02',
+    '  cost = 95',
+    '  category = Electrical',
+    '  TechRequired = x',
+    '  entryCost = 240',
+    '  MODULE',
+    '  {',
+    '    name = ModuleDeployableSolarPanel',
+    '    sunTracking = false',
+    '    chargeRate = 0.7',
+    '  }',
+    '}',
+    'PART',
+    '{',
+    '  name = modSphere',
+    '  title = Round',
+    '  mass = 0.01',
+    '  category = Electrical',
+    '  MODULE',
+    '  {',
+    '    name = ModuleDeployableSolarPanel',
+    '    panelType = SPHERICAL',
+    '    chargeRate = 0.3',
+    '  }',
+    '}',
+    'PART',
+    '{',
+    '  name = modRtg',
+    '  title = Mod RTG',
+    '  mass = 0.1',
+    '  cost = 1000',
+    '  MODULE',
+    '  {',
+    '    name = ModuleRadioisotopeGenerator',
+    '    BasePower = 2.0',
+    '    HalfLife = 8',
+    '  }',
+    '}',
+    'PART',
+    '{',
+    '  name = modReactor',
+    '  title = Mod Reactor',
+    '  mass = 1',
+    '  category = Electrical',
+    '  MODULE',
+    '  {',
+    '    name = ModuleSystemHeatFissionReactor',
+    '    ElectricalGeneration',
+    '    {',
+    '      key = 0 0',
+    '      key = 100 60',
+    '    }',
+    '  }',
+    '  RESOURCE',
+    '  {',
+    '    name = ElectricCharge',
+    '    amount = 10',
+    '    maxAmount = 10',
+    '  }',
+    '}',
+    'PART',
+    '{',
+    '  name = modBattery',
+    '  title = Mod Battery',
+    '  mass = 0.05',
+    '  category = Electrical',
+    '  RESOURCE',
+    '  {',
+    '    name = ElectricCharge',
+    '    amount = 500',
+    '    maxAmount = 500',
+    '  }',
+    '}',
+    'PART',
+    '{',
+    '  name = modIon',
+    '  title = Mod Ion',
+    '  mass = 0.25',
+    '  MODULE',
+    '  {',
+    '    name = ModuleEnginesFX',
+    '    maxThrust = 2',
+    '    PROPELLANT',
+    '    {',
+    '      name = ElectricCharge',
+    '      ratio = 1.8',
+    '    }',
+    '    PROPELLANT',
+    '    {',
+    '      name = XenonGas',
+    '      ratio = 0.1',
+    '    }',
+    '    atmosphereCurve',
+    '    {',
+    '      key = 0 4200',
+    '      key = 1 100',
+    '    }',
+    '  }',
+    '}',
+    'PART',
+    '{',
+    '  name = modCell',
+    '  title = Mod Cell',
+    '  mass = 0.05',
+    '  MODULE',
+    '  {',
+    '    name = ModuleResourceConverter',
+    '    INPUT_RESOURCE',
+    '    {',
+    '      ResourceName = LiquidFuel',
+    '      Ratio = 0.002',
+    '    }',
+    '    OUTPUT_RESOURCE',
+    '    {',
+    '      ResourceName = ElectricCharge',
+    '      Ratio = 2',
+    '    }',
+    '  }',
+    '}',
+  ].join('\n');
+  const r = parsePowerCfg(cfg, dens);
+  assert.deepEqual(r.solar.modPanel, { rate: 0.7, tracking: false });
+  assert.equal(r.solar.modSphere.fixed, 0.25, 'the game gives a spherical panel a fixed 0.25');
+  assert.equal(r.rtg.modRtg, 2);
+  assert.equal(r.reactors.modReactor, 60);
+  assert.ok(!('modReactor' in r.batteries), 'a reactor that carries a little charge is not a battery');
+  assert.equal(r.batteries.modBattery, 500);
+  assert.equal(r.stored.modReactor, 10);
+  near(r.engines.modIon.ec, 8.74, 0.01);
+  assert.equal(r.cells.modCell.ec, 2);
+  assert.equal(r.parts.modPanel.title, 'Mod Panel');
+  assert.equal(r.parts.modPanel.entry, 240);
+  // used by the design: the mod's parts show up as options and a mod RTG sizes like a stock one
+  const prof = En.lightProfile(world, orbit('Kerbin', 100000));
+  const d = En.design({ profile: prof, loads: [{ label: 'x', ec: 4, duty: 1 }], state: null, extra: mergePower({}, r) });
+  const ids = d.options.map((o) => o.parts[0].id);
+  ['modPanel', 'modRtg', 'modReactor', 'modCell'].forEach((id) => assert.ok(ids.includes(id), id + ' is offered'));
+  assert.ok(d.options.find((o) => o.parts[0].id === 'modPanel').notes.includes('mod part'));
+  assert.ok(En.loadCatalogue(mergePower({}, r)).some((c) => c.id === 'eng:modIon'));
+  // and nothing leaks into later calls without the extra parts
+  assert.ok(!En.design({ profile: prof, loads: [{ label: 'x', ec: 4, duty: 1 }], state: null }).options.some((o) => o.parts[0].id === 'modPanel'));
 });

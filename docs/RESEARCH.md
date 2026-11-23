@@ -105,7 +105,7 @@ Stock: elements, radius, GM, rotation and atmosphere heights from the wiki infob
 game's mean anomalies at epoch are `3.14` rad, not π. Outer Planets Mod: read from its Kopernicus configs
 (`Poodmund/Outer-Planets-Mod`, `GameData/OPM/KopernicusConfigs`); GM from `geeASL × 9.81 × r²` (this reproduces the
 stock GMs exactly). With OPM installed, **Eeloo is moved to orbit Sarnus** (an override, not an addition). Plock and
-Karen form a Kopernicus binary; here Karen simply orbits Plock.
+Karen form a SigmaBinary pair; the world models them circling their common centre.
 
 All orbits are two-body Kepler orbits in one inertial frame (KSP has no axial tilts). Validation:
 
@@ -190,8 +190,9 @@ reachability matrix and the difficulty modifiers; the implementation and data ar
   template-defined bodies. The monthly workflow repeats the run; no pack file is stored in this repository. JNSQ's `AntennaRange.cfg` patch multiplies every part's
   `antennaPower` by 4 (and its upgrades) and recommends DSN modifier 4 and range modifier 1; this is not applied automatically (see settings-and-mods).
 * Vessels opted in to *patched conics* follow SOI exits and encounters on a fixed conic (`js/trajectory.js`, at most
-  8 legs over 25 years, no burns). Others stay on one conic about their body. Kopernicus binaries (Plock-Karen) are
-  simplified.
+  16 legs over 25 years by default, both settings; planned burns are applied, as pulses when given a duration). Others stay on one conic about their body.
+  OPM's Plock and Karen carry a `SigmaBinary` block (`primaryLocked = true`): the app treats the moon's orbit as the separation and the pair as circling its centre of mass
+  (assumed from the mod's documentation, not checked in the game).
 * The Finder and the Link & relay chain remain range calculators; they report the line-of-sight windows between the two
   bodies' centres but not a vessel hiding behind its own planet (use the Tracker for that).
 
@@ -315,7 +316,7 @@ biomes and its frequency. How it is paid (read from `Expansions.Serenity.Deploye
 * ISRU (`Squad/Parts/Resources/ISRU/ISRU.cfg`, Convert-O-Tron 250 liquid fuel + oxidizer converter): input `Ore` ratio 0.5 and `ElectricCharge` 30,
   output `LiquidFuel` 0.45 and `Oxidizer` 0.55 per converter cycle (per second at full rate). `ResourcesGeneric.cfg` densities: Ore 0.01 t/unit,
   liquid fuel and oxidizer 0.005 t/unit: one ore unit becomes 0.9 + 1.1 units of propellant, so a tonne of ore is a tonne of propellant. Drill rates
-  depend on the ore concentration, which is not in the files read here (the drill `Efficiency` is: 0.3 for the small drill, 1.5 for the radial one).
+  depend on the ore concentration (the drill `Efficiency` is: 0.3 for the small drill, 1.5 for the radial one). `ModuleResourceHarvester.PrepareRecipe` computes the ore flow as `Efficiency x abundance` (abundance as a fraction from `ResourceMap.GetAbundance`), and every converter and drill is then multiplied by `BaseConverter.GetCrewEfficiencyBonus` = `SpecialistBonusBase + (1 + level) x SpecialistEfficiencyFactor` for the vessel's best engineer (`HasSpecialist` returns -1 with none, so 0.05; drills and Convert-O-Trons both use 0.05 and 0.2). The per-body range is `GameData/Squad/Resources/Ore.cfg` (global: 1 to 15 percent, presence 100; the Sun and Jool 0). The abundance at a place is noise seeded from the save's `GameSeed` times the body index and the resource name (`ResourceMap.GenerateAbundanceSeed`); the noise function was not ported, so the app uses the range.
 * Terrain and CommNet: the occluder test (section 2) takes the celestial bodies only, so cliffs and crater rims never block a link in stock.
   The Network plan tab's terrain setting is an elevation mask the simulator applies to a landed site (`sim.js`, `node.mask`): it is a margin for
   modded games, off by default.
@@ -330,8 +331,14 @@ biomes and its frequency. How it is paid (read from `Expansions.Serenity.Deploye
 * **Solar panels** (`ModuleDeployableSolarPanel`, IL of `ModuleDeployableSolarPanel.PostCalculateTracking` and the flux code): output =
   `chargeRate × (solarFlux / SolarLuminosityAtHome) × sunAOA × temperature/time efficiency × efficiencyMult`. `solarFlux` is the star's luminosity over
   4π d², so against the home flux it is `(a_home / d)²`. Tracking panels use an angle factor of 1 while lit; fixed panels use the cosine of the angle
-  between the panel and the sun. The atmosphere's own factor (`CelestialBody.GetSolarAtmosphericEffects`) is not modelled; the Energy tab takes it as a
-  setting. The sun is hidden when a body's sphere is between the vessel and the star.
+  between the panel and the sun. The atmosphere's factor is `CelestialBody.GetSolarAtmosphericEffects`: with `raf = radius / atmosphereDepth x ln(1e6)` and `x = raf x sunDot`
+  (sine of the sun's elevation), the air mass is `sqrt(2 raf + 1)` when the sun is below the horizon and `sqrt(x^2 + 2 raf + 1) - x` above it; the factor is
+  `GetSolarPowerFactor(density x airMass)` = `k / (k + d x S)` with `S = solarInsolationAtHome = 0.15` and `k = (1 - S) x` the home world's sea-level density
+  (so 0.85 overhead at sea level). It scales `Vessel.solarFlux` (`FlightIntegrator.CalculateConstantsAtmosphere`). A panel's output also multiplies by
+  `temperatureEfficCurve(skinTemperature)` (default keys (4, 1.2), (300, 1), (1200, 0.134), (1900, 0.02), (2500, 0.01), Hermite tangents as in the code) and
+  `timeEfficCurve` (default constant 1), and by `sunAOA`: a flat panel the cosine to its normal, a spherical one 0.25, a cylindrical one `(1 - |dot|)/pi`.
+  The skin temperature is the whole vessel's thermal state (`CalculateAnalyticTemperature` sums areas, emissivity and body fluxes); the Energy tab uses a
+  plate estimate instead and says so. The sun is hidden when a body's sphere is between the vessel and the star.
 * **Part numbers** come from the part configs (`node scripts/build-energy-data.js`): 11 solar panels (charge rate and whether they track), the RTG
   (0.75 charge per second, no fuel), the fuel cells (the Fuel Cell: 1.5 charge per second from liquid fuel 0.0016875 and oxidizer 0.0020625 per second; the
   Fuel Cell Array: 18 from 0.02025 and 0.02475), 7 batteries (capacity in charge units), probe cores and reaction wheels (the `ElectricCharge` rate), 2 drills (3 and 15 per
@@ -339,4 +346,10 @@ biomes and its frequency. How it is paid (read from `Expansions.Serenity.Deploye
 * Antennas draw `packetCost / packetInterval` only while they transmit; relaying draws nothing.
 * **Eclipses and night** are computed, not assumed: the module samples real positions over the planet's year (8 epochs) and two cycles of the orbit
   or solar day. The share in sunlight in a 100 km Kerbin orbit is about 2/3, and the longest darkness about 650 s, as the geometry says.
-* **Not read:** panel heating curves, how the game dims light through an atmosphere, ion-engine consumption per throttle, and mods' own power parts.
+* **Electric engines** draw `ec = mass flow x ratio(ElectricCharge) / sum(ratio x density)` at full thrust, with `mass flow = thrust / (Isp x g0)`: 8.74 charge/s for the
+  ion engine, which matches the game's own 8.7 in its part info.
+* **Mod power parts** are read by `parsePowerCfg` (`js/parsers.js`): `ModuleDeployableSolarPanel` (`chargeRate`, `isTracking`/`sunTracking`, `panelType`), `ModuleGenerator`
+  and `ModuleRadioisotopeGenerator` (`BasePower`), `FissionGenerator` (`PowerGeneration`), `ModuleSystemHeatFissionReactor` (`ElectricalGeneration` at 100%),
+  converters that output charge (fuel cells), `RESOURCE ElectricCharge` for batteries and stored charge, electric engines. Checked against the stock configs (every
+  number matches the bundled data) and against Near Future Solar (29 panels) and Near Future Electrical (RTGs, reactors, batteries).
+* **Not read:** engine alternators, the whole-vessel thermal model behind a panel's temperature, and mods' own non-standard power modules.

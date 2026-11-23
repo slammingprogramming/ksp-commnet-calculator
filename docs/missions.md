@@ -23,8 +23,10 @@ part, adds up the price and mass, and works out the delta-v **stage by stage** f
 Fuel ducts are followed: a duct hangs on one part and feeds the part at its far end, so boosters that feed the core through ducts
 drain first and the core is full when they drop (asparagus staging). Tanks drain in order of the stage they separate in (the
 game's rule, with the part's own priority setting added), tanks of the same rank share equally, and solid fuel stays in its own part.
-Not modelled: fuel flow rules you set by hand beyond the priority number, gimbal, ullage, drag and gravity losses
-(they are in the route's allowance instead), engines with several modes, and parts from mods (they are listed as unknown and left out).
+Engines with several modes (R.A.P.I.E.R., Panther) burn their closed-cycle (or first) mode in the columns; the tooltip of the sea-level column gives the delta-v of the air-breathing mode on the same fuel.
+Not modelled: fuel flow rules you set by hand beyond the priority number, gimbal, ullage, and drag and gravity losses inside the rocket's own delta-v
+(they are in the route's allowance instead). Parts from mods are known after you pick their part files with **Import mod parts (.cfg)**: tanks, engines and decouplers
+get a price, a mass and a delta-v (they count as available in a career; Module Manager patches are not applied).
 
 ## Routes
 
@@ -33,8 +35,8 @@ orbiter, Duna landing and return) and change it.
 
 | Leg | What it uses |
 |---|---|
-| Launch to orbit | orbital speed + a loss allowance − the rotation bonus. 1,300 m/s for Kerbin gives the usual ≈3,400 m/s to a low orbit; airless bodies take 15% of the orbital speed; thick atmospheres need your own figure |
-| Transfer | planet to planet (or moon to moon): the same Lambert search as the [Launch windows](launch-windows.md) tab from the mission start date, earliest or cheapest window, with real dates. A planet to its own moon: a Hohmann transfer. Capture can be skipped for a fly-by |
+| Launch to orbit | orbital speed + a loss allowance − the rotation bonus. 1,300 m/s for Kerbin gives the usual ≈3,400 m/s to a low orbit; airless bodies take 15% of the orbital speed; thick atmospheres, and any leg where you fill in *thrust-to-weight*, simulate a gravity turn with the body's air (a point mass at that thrust-to-weight with the pitch kick searched: a guide, not the game's flight model); a figure typed into *Losses* always wins |
+| Transfer | planet to planet (or moon to moon; or a moon of one planet to another planet or moon, using the planets' window and pricing the moon ends as an escape or a capture, with the moon assumed on the right side): the same Lambert search as the [Launch windows](launch-windows.md) tab from the mission start date, earliest or cheapest window, with real dates. A planet to its own moon: a Hohmann transfer. Capture can be skipped for a fly-by |
 | Land from orbit | de-orbit burn + the speed at the surface, plus a margin; with parachutes on a body with air, a small powered allowance |
 | Ascend to orbit | orbital speed + losses |
 | Return from a moon | the escape that drops to a chosen periapsis at the parent planet |

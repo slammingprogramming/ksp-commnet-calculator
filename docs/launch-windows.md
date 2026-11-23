@@ -26,6 +26,10 @@ between the real positions of the two bodies, so it follows their actual orbits,
 **It is an estimate:** two-body, impulsive burns, circular parking and capture orbits. Add a margin for gravity losses and
 steering.
 
+## Encounter burn
+
+For a moon of the body you orbit, the **Encounter burn** card finds the single burn from a circular parking orbit that reaches the moon: when to light it, the prograde, normal and radial components (the manoeuvre node axes), the flight time, the arrival speed and the capture burn. It joins your orbit to the moon's centre at arrival with a Lambert arc, so trim the periapsis afterwards. Enter it as a burn on the Scenario tab and the Tracker draws the patched conic to the encounter.
+
 ## Putting a burn on a vessel
 
 On the **Scenario** tab, an orbiting vessel has **Manoeuvres**: add a burn with a time and prograde, normal and radial
@@ -38,5 +42,5 @@ A useful routine: put a relay on its parking orbit, add the leaving burn from th
 cross to the target in the tracker. Fine-tune the burn until the encounter happens, then use the network and planner tabs
 to check the link during the cruise and after arrival.
 
-Burns are impulsive and there is no staging or fuel model; the total delta-v is shown so you can compare it with your
+Burns are impulsive unless you give one a duration in seconds (then it is flown as short pulses); there is no staging or fuel model; the total delta-v is shown so you can compare it with your
 rocket's budget. A scenario can carry up to 12 burns per vessel, and they travel with export files and share links.

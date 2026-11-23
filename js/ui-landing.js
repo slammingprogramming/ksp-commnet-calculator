@@ -316,7 +316,17 @@
   function seismicPlanBlock(bodyName, bodyDef, radius, dp, im, sensors, gain, changed) {
     if (!bodyDef || !radius) return [];
     const atmo = Career.hasAtmosphere(bodyName);
-    const speeds = [{ label: 'your speed above', speed: im.speed }].concat(atmo ? [] : Career.impactSpeeds(bodyDef, [30, 100]));
+    // in air the crash is slowed by drag: fly a point mass down from a low orbit (the Reentry tab's model) for a light probe and for a dense slug
+    const Re = window.KSPReentry;
+    const airSpeeds = [];
+    if (atmo && Re && bodyDef.id && Re.hasAtmosphere(bodyDef.id)) {
+      for (const beta of [300, 3000]) {
+        const e = Re.entryFromOrbit(bodyDef, 0, 100000, null);
+        const run = e ? Re.entry(bodyDef, { speed: e.speed, angle: Math.max(e.angle, 25), ballistic: beta }) : null;
+        if (run && run.final && (run.landed || run.final.speed <= 60)) airSpeeds.push({ label: 'dropped from orbit through the air (ballistic coefficient ' + beta + ' kg/m²: ' + (beta < 1000 ? 'a light probe' : 'a dense slug') + ')', speed: run.final.speed });
+      }
+    }
+    const speeds = [{ label: 'your speed above', speed: im.speed }].concat(atmo ? airSpeeds : Career.impactSpeeds(bodyDef, [30, 100]));
     // optional sensor positions, one "latitude longitude" pair per line, in the order the sensors are listed
     const lines = String(im.positions || '').split(/\n/).map((l) => l.trim().split(/[\s,;]+/).map(parseFloat)).filter((p) => p.length >= 2 && isFinite(p[0]) && isFinite(p[1]));
     const units = (sensors.length ? sensors : [{ level: null }]).map((u, i) => (sensors.length > 1 && lines.length >= sensors.length ? Object.assign({}, u, { lat: lines[i][0], lon: lines[i][1] }) : u));

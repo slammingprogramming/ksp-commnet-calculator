@@ -20,7 +20,7 @@
   const BODY_RE = /^[A-Za-z0-9_.\- ]{1,40}$/;
 
   const SETTING_KEYS = {
-    dsnLevel: ['int', 1, 3], rangeMod: ['num', 0.05, 10], dsnMod: ['num', 0.05, 10], occVac: ['num', 0.1, 1.25], occAtm: ['num', 0.1, 1.25],
+    dsnLevel: ['int', 1, 3], rangeMod: ['num', 0.05, 10], packPower: ['num', 0.05, 100], patchedYears: ['num', 1, 500], patchedLegs: ['int', 2, 64], dsnMod: ['num', 0.05, 10], occVac: ['num', 0.1, 1.25], occAtm: ['num', 0.1, 1.25],
     extraStations: ['bool'], makingHistory: ['bool'], allowOtherLaunchSites: ['bool'], sunOccludes: ['bool'], atmoBlocks: ['bool'],
   };
 
@@ -61,6 +61,7 @@
       if (loc.patched === true) out.patched = true;
       if (Array.isArray(loc.burns)) {
         const burns = loc.burns.slice(0, 12).map((b) => (b && typeof b === 'object' ? { t: num(b.t, -1e13, 1e13, NaN), prograde: num(b.prograde, -1e5, 1e5, 0), normal: num(b.normal, -1e5, 1e5, 0), radial: num(b.radial, -1e5, 1e5, 0) } : null)).filter((b) => b && isFinite(b.t));
+        loc.burns.slice(0, 12).filter((b) => b && typeof b === 'object' && isFinite(num(b.t, -1e13, 1e13, NaN))).forEach((b, i) => { const d = num(b.duration, 0, 86400, 0); if (d > 0 && burns[i]) burns[i].duration = d; });
         if (burns.length) out.burns = burns;
       }
       const el = loc.elements;

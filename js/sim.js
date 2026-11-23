@@ -91,7 +91,7 @@
     const homeCount = nodes.length;
     const problems = [];
     for (const n of opts.nodes || []) {
-      const stats = n.powerOverride || Core.vesselStats(n.antennas || [], lookup, st.rangeMod);
+      const stats = n.powerOverride || Core.vesselStats(n.antennas || [], lookup, st.rangeMod, { relayEnabler: n.relayEnabler });
       const rec = { id: n.id, name: n.name, home: false, tracked: n.tracked !== false, loc: n.loc, own: stats.own, relay: stats.relay, source: n };
       // Optional terrain-shadow what-if for a landed node: it cannot see anything lower than `mask` degrees above its local horizon.
       // Stock CommNet has no terrain occlusion (only whole bodies block), so this is off unless a plan asks for it.
@@ -103,7 +103,7 @@
         rec.period = timeScale(rec._p);
         // opt-in patched conics: follow the vessel through sphere-of-influence exits and encounters (escape trajectories, transfers)
         if ((n.loc.patched || (n.loc.burns && n.loc.burns.length)) && opts.trajectory) {
-          const segs = Traj.build(world, b.id, n.loc.orbit, opts.trajectory.t0, opts.trajectory.horizon, n.loc.burns);
+          const segs = Traj.build(world, b.id, n.loc.orbit, opts.trajectory.t0, opts.trajectory.horizon, n.loc.burns, opts.trajectory.maxSegments);
           if (segs.length > 1) {
             segs.forEach((sg) => { sg.bodyIdx = sg.body.idx; });
             rec._segs = segs;

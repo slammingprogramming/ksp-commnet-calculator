@@ -62,18 +62,30 @@
     s.strategies = c.strategies.slice();
     s.progress = (c.progress || []).slice();
     if (c.ut !== null) s.ut = c.ut;
+    if (c.crew !== undefined) s.crew = c.crew;
+    s.records = Object.assign({}, c.records || {});
     return s;
   }
+
+  /** What hiring the next Kerbal costs with `crew` active Kerbals (GameVariables.GetRecruitHireCost: 2000 + 80000 x ln(0.25 x crew + 1.12), rounded, times the
+   *  difficulty's funds loss multiplier). Read from the game's code; it reproduces the prices players report in 1.12 (62,113, 71,031, 79,054 for the first three hires). */
+  const hireCost = (crew, loss) => Math.round(2000 + 80000 * Math.log(0.25 * crew + 1.12)) * (loss === undefined || loss === null ? 1 : loss);
 
   // ---- facilities ----------------------------------------------------------------------------------------------
   const INF = 'unlimited';
   const fmtN = (x, unit) => (x === null ? INF : x + (unit || ''));
+  /** What the Launch Pad and the Runway allow at levels 1..3 (read from GameVariables.GetCraftMassLimit and GetCraftSizeLimit: 18 t / 140 t / none, and
+   *  15 x 20 x 15 m / 28 x 36 x 28 m / none; the same tables serve both sites, and the game compares the craft's size axis by axis). */
+  const CRAFT_LIMITS = { mass: [18, 140, null], size: [[15, 20, 15], [28, 36, 28], null] };
+  const fitsSize = (size, level) => { const lim = CRAFT_LIMITS.size[Math.max(0, Math.min(2, level - 1))]; return !lim || !size || size.length < 3 || (size[0] <= lim[0] && size[1] <= lim[1] && size[2] <= lim[2]); };
   /** What a facility allows at a level (1..3): list of [label, value]. */
   function effects(id, level) {
     const f = CD.facilities[id] || {};
     const i = Math.max(0, Math.min(2, level - 1));
     const out = [];
     if (f.massLimit) out.push(['Launch mass limit', fmtN(f.massLimit[i], ' t')]);
+    else if (id === 'Runway') out.push(['Launch mass limit', fmtN(CRAFT_LIMITS.mass[i], ' t')]);
+    if (id === 'LaunchPad' || id === 'Runway') out.push(['Craft size limit', CRAFT_LIMITS.size[i] ? CRAFT_LIMITS.size[i].join(' × ') + ' m' : INF]);
     if (f.partLimit) out.push(['Parts per vessel', fmtN(f.partLimit[i])]);
     if (f.contracts) out.push(['Active contracts', fmtN(f.contracts[i])]);
     if (f.flightPlanning) out.push(['Flight planning', f.flightPlanning[i] ? 'yes' : 'no']);
@@ -173,7 +185,7 @@
     let funds = 0;
     const unknown = [];
     for (const p of craft.parts) {
-      if (!p.db) continue;
+      if (!p.db || p.db.mod) continue;                          // mod parts sit on tech nodes this app does not know: they are treated as available
       if (p.db.tech && p.db.tech !== 'Unresearchable' && !have.has(p.db.tech)) nodesNeeded.add(p.db.tech);
       if (!bought.has(norm(p.db.id)) && p.db.entry > 0 && !buy[p.db.id]) { buy[p.db.id] = p.db; funds += p.db.entry; }
       if (p.db.tech === 'Unresearchable') unknown.push(p.db.id);
@@ -196,11 +208,15 @@
   function missionFinance(state, m) {
     const out = [];
     const loss = state.diff.loss[0];
-    if (m.cost) out.push({ label: 'Launch (rocket)', funds: -m.cost, kind: 'launch', day: m.day || 0 });
-    if (m.recovery) out.push({ label: 'Recovery', funds: m.recovery, kind: 'recovery', day: (m.day || 0) + (m.duration || 0) });
+    // Active strategies change what comes in or goes out for each reason (the game's CurrencyModifierQuery): a launch is the vessel rollout, a recovery the vessel recovery.
+    const eff = (reason, amounts) => strategyEffect(state.strategies, reason, amounts);
+    const tagged = (e) => (e.delta.funds || e.delta.sci || e.delta.rep ? ' (strategies: ' + ['funds', 'sci', 'rep'].filter((k) => e.delta[k]).map((k) => (e.delta[k] > 0 ? '+' : '') + Math.round(e.delta[k] * 10) / 10 + ' ' + k).join(', ') + ')' : '');
+    if (m.cost) { const e = eff('VesselRollout', { funds: -m.cost }); out.push({ label: 'Launch (rocket)' + tagged(e), funds: e.total.funds, kind: 'launch', day: m.day || 0 }); }
+    if (m.recovery) { const e = eff('VesselRecovery', { funds: m.recovery }); out.push({ label: 'Recovery' + tagged(e), funds: e.total.funds, sci: e.delta.sci, rep: e.delta.rep, kind: 'recovery', day: (m.day || 0) + (m.duration || 0) }); }
     for (const c of m.contracts || []) {
-      if (c.advance) out.push({ label: c.label + ' (advance)', funds: c.advance, kind: 'contract', day: c.acceptDay === undefined ? (m.day || 0) : c.acceptDay });
-      out.push({ label: c.label + ' (reward)', funds: c.reward, sci: c.sci || 0, rep: c.rep || 0, kind: 'contract', day: (m.day || 0) + (m.duration || 0) });
+      if (c.advance) { const e = eff('ContractAdvance', { funds: c.advance }); out.push({ label: c.label + ' (advance)' + tagged(e), funds: e.total.funds, sci: e.delta.sci, rep: e.delta.rep, kind: 'contract', day: c.acceptDay === undefined ? (m.day || 0) : c.acceptDay }); }
+      const e = eff('ContractReward', { funds: c.reward, sci: c.sci || 0, rep: c.rep || 0 });
+      out.push({ label: c.label + ' (reward)' + tagged(e), funds: e.total.funds, sci: e.total.sci, rep: e.total.rep, kind: 'contract', day: (m.day || 0) + (m.duration || 0) });
     }
     return { items: out, net: out.reduce((a, x) => a + x.funds, 0), loss: loss };
   }
@@ -216,13 +232,15 @@
     });
     return { rows: rows, end: { funds: funds, sci: sci, rep: rep }, low: low, lowDay: lowDay, firstShort: firstShort };
   }
-  /** Rough contract value from the base table: base x prestige x the difficulty gain (the real offer varies with the target body). */
-  function contractEstimate(state, type, prestige) {
+  /** Contract value from the base table: base x prestige x the difficulty gain x the destination weight of the body (Contract.SetFunds / SetScience / SetReputation
+   *  multiply by GameVariables.GetContractDestinationWeight(body), the body's science recovery value). The real offer also varies with the contract's own parameters. */
+  function contractEstimate(state, type, prestige, body) {
     const c = CD.contracts[type];
     if (!c) return null;
     const p = CD.vars.prestige[prestige || 'trivial'] || 1;
     const g = state.diff.gain;
-    return { advance: Math.round(c.funds.advance * p * g[0]), reward: Math.round(c.funds.reward * p * g[0]), sci: Math.round(c.sci * g[1] * 10) / 10, rep: Math.round(c.rep.reward * g[2] * 10) / 10 };
+    const w = body && CD.bodyScience[body] ? CD.bodyScience[body].recovery : 1;
+    return { weight: w, advance: Math.round(c.funds.advance * p * g[0] * w), reward: Math.round(c.funds.reward * p * g[0] * w), sci: Math.round(c.sci * g[1] * w * 10) / 10, rep: Math.round(c.rep.reward * g[2] * w * 10) / 10 };
   }
 
   // ---- science -------------------------------------------------------------------------------------------------
@@ -332,6 +350,12 @@
     const a = keys[k - 1], b = keys[k], dt = b[0] - a[0], s = (x - a[0]) / dt, s2 = s * s, s3 = s2 * s;
     return (2 * s3 - 3 * s2 + 1) * a[1] + (s3 - 2 * s2 + s) * dt * a[3] + (-2 * s3 + 3 * s2) * b[1] + (s3 - s2) * dt * b[2];
   }
+  /** Extra science a transmission earns from the CommNet signal strength (0..1): the data transmitter's scienceCurve, read from the game
+   *  (ModuleDataTransmitter.OnAwake). The report page then pays baseTransmitValue x (1 + this), never more than the subject's full value. */
+  const SCIENCE_SIGNAL = [[0, 0, 0, 0], [0.45, 0.08, 0.4951019, 0.4951019], [0.81, 0.35, 0.8020515, 0.8020515], [1, 0.4, 0, 0]];
+  const transmitBonus = (signal) => floatCurve(SCIENCE_SIGNAL, clamp01(signal === undefined || signal === null ? 1 : signal));
+  /** Science from transmitting a result worth `first` when recovered: first x the experiment's transmit efficiency x (1 + signal bonus), capped at `first`. */
+  const transmitValue = (first, xmit, signal) => Math.min(first, first * (xmit === undefined || xmit === null ? 0.5 : xmit) * (1 + transmitBonus(signal)));
   /** The seismometer's share of an impact by distance: its distanceCurve at the angle (great-circle distance / body radius),
    *  clamped to 0..1. A missing distance counts as one radius (the game's fallback when the impact has no controlling vessel). */
   function seismicDistance(distance, radius) {
@@ -482,7 +506,7 @@
       for (const e of st.effects) {
         if (!e.affect || e.affect.indexOf(reason) < 0) continue;
         if (e.name === 'CurrencyConverter') {
-          const k = KEY[e.input], take = (amounts[k] || 0) * lerp(e.minShare, e.maxShare, f);
+          const k = KEY[e.input], take = Math.max(0, amounts[k] || 0) * lerp(e.minShare, e.maxShare, f);     // converters take a share of what comes in, never of a cost
           d[k] -= take; d[KEY[e.output]] += take * lerp(e.minRate, e.maxRate, f);
         } else if (e.name === 'CurrencyOperation') {
           const k = KEY[e.currency], v = lerp(e.minValue, e.maxValue, f);
@@ -557,6 +581,42 @@
     const s = strategyEffect(active, 'Progression', base);
     return { base: base, total: s.total, delta: s.delta, prestige: ['trivial', 'significant', 'exceptional'][prestigeOf(type)], score: score(type, body), outlier: outlier(type, body) };
   }
+  /* Records (altitude, speed, distance, depth) pay in five steps (Progression.RecordSplit): ProgressUtilities.FindNextRecord puts step i at
+   * max x 0.01 x (100^(1/4))^(i-1), rounded to the record's rounding unit, and ProgressNode.AwardProgressInterval pays WorldFirstIntervalReward(type, i, 5):
+   * the milestone reward of the record type (score 2, so exceptional) divided by five, or, when that is one unit or less, single units spread over the steps.
+   * Maxima: altitude = the home world's atmosphere depth (70 km), speed 2500 m/s, distance 100 km, depth 750 m. Speed and distance count on any body, altitude
+   * only about the home world, depth only in the ocean. Read from KSPAchievements.Records* with tools/ildump. */
+  const RECORDS = [
+    { id: 'ALTITUDERECORD', n: 1, node: 'RecordsAltitude', label: 'Altitude record (about the home world)', unit: 'm', max: 70000, round: 500 },
+    { id: 'SPEEDRECORD', n: 23, node: 'RecordsSpeed', label: 'Speed record', unit: 'm/s', max: 2500, round: 5 },
+    { id: 'DISTANCERECORD', n: 6, node: 'RecordsDistance', label: 'Distance record', unit: 'm', max: 100000, round: 1000 },
+    { id: 'DEPTHRECORD', n: 5, node: 'RecordsDepth', label: 'Depth record (ocean)', unit: 'm', max: 750, round: 10 },
+  ];
+  RECORDS.forEach((r) => { if (!M.types[r.id]) M.types[r.id] = { n: r.n, score: [2, 2], label: r.label }; });
+  const RECORD_SPLIT = 5;
+  /** Reward of step i (1..5) when the standard reward is `total`: WorldFirstIntervalReward. */
+  function intervalReward(total, i, split) {
+    const per = total / split;
+    if (per > 1) return per;
+    if (!(per > 0)) return 0;
+    if (Math.floor(per * (i - 1)) < Math.floor(per * i)) return 1;
+    return i === split ? Math.round(total % 1) : 0;
+  }
+  /** The five steps of every record: threshold and what each step pays, with whether the save's best (state.records[node]) passed it. */
+  function recordTable(state) {
+    const gain = (state && state.diff && state.diff.gain) || [1, 1, 1];
+    const ratio = Math.pow(100, 1 / (RECORD_SPLIT - 1));
+    return RECORDS.map((r) => {
+      const R = milestoneReward(r.id, null, gain, state && state.strategies);
+      const best = state && state.records && state.records[r.node] !== undefined ? state.records[r.node] : null;
+      const steps = [];
+      for (let i = 1; i <= RECORD_SPLIT; i++) {
+        const t = Math.round((r.max * 0.01 * Math.pow(ratio, i - 1)) / r.round) * r.round;
+        steps.push({ step: i, threshold: t, funds: intervalReward(R.total.funds, i, RECORD_SPLIT), sci: intervalReward(R.total.sci, i, RECORD_SPLIT), rep: intervalReward(R.total.rep, i, RECORD_SPLIT), reached: best !== null && best >= t });
+      }
+      return { id: r.id, label: r.label, unit: r.unit, max: r.max, best: best, steps: steps, total: R.total };
+    });
+  }
   /** Every milestone worth a reward on the stock bodies (and the one-off ones), with reward and whether the save already has it. */
   function milestoneList(state, bodies) {
     const done = new Set(state.progress || []);
@@ -584,7 +644,10 @@
   }
 
   return {
+    hireCost: hireCost, CRAFT_LIMITS: CRAFT_LIMITS, fitsSize: fitsSize,
+    transmitBonus: transmitBonus, transmitValue: transmitValue, SCIENCE_SIGNAL: SCIENCE_SIGNAL,
     strategyEffect: strategyEffect, strategyTable: strategyTable, strategyCost: strategyCost,
+    recordTable: recordTable, intervalReward: intervalReward, RECORDS: RECORDS,
     milestoneReward: milestoneReward, milestoneList: milestoneList, milestonePrestige: prestigeOf, NODE_TYPE: NODE_TYPE, SINGLE_NODE: SINGLE_NODE,
     FACILITIES: FACILITIES, facName: facName, SITUATIONS: SITUATIONS, nodes: nodes, partsByTech: partsByTech, partById: partById,
     newState: newState, fromSave: fromSave, effects: effects, upgradeCost: upgradeCost, facilityTable: facilityTable,

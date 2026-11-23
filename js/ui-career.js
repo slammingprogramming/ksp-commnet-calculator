@@ -43,7 +43,7 @@
 
     function render() {
       const c = career(), s = c.state;
-      out.replaceChildren(...[stateCard(c, s), financeCard(c, s), facilityCard(c, s), techCard(c, s), milestoneCard(c, s), strategyCard(c, s), scienceCard(c, s), contractCard(c, s)].filter(Boolean));
+      out.replaceChildren(...[stateCard(c, s), financeCard(c, s), facilityCard(c, s), techCard(c, s), milestoneCard(c, s), strategyCard(c, s), hireCard(c, s), scienceCard(c, s), contractCard(c, s)].filter(Boolean));
       keepOpen(out, c);
     }
     /** A card the user opened or closed stays that way when the tab redraws after an edit. */
@@ -231,6 +231,18 @@
     }
 
     // ---- science ----------------------------------------------------------------------------------------------
+    // ---- hiring --------------------------------------------------------------------------------------------
+    function hireCard(c, s) {
+      const crew = s.crew === undefined ? 4 : s.crew;
+      const rows = [0, 1, 2, 3, 4, 5].map((k) => [crew + k, Career.hireCost(crew + k, s.diff.loss[0])]);
+      return h('details', { class: 'card' },
+        h('summary', { text: 'Hiring Kerbals' }),
+        h('p', { class: 'hint', text: 'The Astronaut Complex charges more for each Kerbal on the roster: 2000 + 80000 × ln(0.25 × active Kerbals + 1.12), times the funds loss multiplier of the difficulty (read from the game’s code; it gives the 62,113, 71,031 and 79,054 that players report for the first three hires with the original four). A loaded save fills in the active Kerbals.' }),
+        h('div', { class: 'row' }, field('Active Kerbals', num(crew, (v) => { s.crew = v === null ? 4 : Math.max(0, Math.round(v)); changed(); }, { size: 4, label: 'active kerbals' }))),
+        h('table', {}, h('thead', {}, h('tr', {}, ['Hire number', 'With this many on the roster', 'Price'].map((t, i) => h('th', { class: i ? 'num' : '', text: t })))),
+          h('tbody', {}, rows.map((r, i) => h('tr', {}, h('td', { text: '#' + (i + 1) }), h('td', { class: 'num', text: String(r[0]) }), h('td', { class: 'num', text: money(r[1]) }))))));
+    }
+
     function scienceCard(c, s) {
       const body = c.body && CD.bodyScience[c.body] ? c.body : 'Mun';
       const rows = Career.scienceTable(body).slice(0, 40);
@@ -239,12 +251,12 @@
       return h('details', { class: 'card' },
         h('summary', { text: 'Science worth at a body' }),
         h('p', { class: 'hint', text: 'What an experiment is worth in each situation: the first time you bring or send it back, and the most that subject can ever give. Every biome is its own subject, so the same experiment in a new biome pays again (the Landing tab shows the biomes of each body). Sending data home instead of recovering it gives only a fraction of the first return (the part’s transmit efficiency). Recovering a vessel from this body is worth ×' + b.recovery + '.' }),
-        h('div', { class: 'row' }, field('Body', bodySel)),
+        h('div', { class: 'row' }, field('Body', bodySel), field('Signal strength when sending (%)', num(c.signal === undefined ? 100 : c.signal, (v) => { c.signal = v === null ? 100 : Math.max(0, Math.min(100, v)); changed(); }, { size: 4, label: 'signal strength when sending' }), 'a strong CommNet link adds up to +40% to what a transmission pays (never above the full value)')),
         h('div', { class: 'scroll' }, h('table', {},
           h('thead', {}, h('tr', {}, ['Experiment', 'Situation', 'Multiplier', 'First return', 'Subject cap', 'If transmitted'].map((t, i) => h('th', { class: i >= 2 ? 'num' : '', text: t })))),
           h('tbody', {}, rows.map((r) => h('tr', {}, h('td', { text: r.title }), h('td', { text: r.situation }), h('td', { class: 'num', text: '×' + r.multiplier }),
             h('td', { class: 'num', text: (Math.round(r.first * 10) / 10) + '' }), h('td', { class: 'num', text: (Math.round(r.cap * 10) / 10) + '' }),
-            h('td', { class: 'num', text: (Math.round(r.first * (CD.experiments[r.id].xmit || 0.5) * 10) / 10) + '' })))))),
+            (() => { const v = Career.transmitValue(r.first, CD.experiments[r.id].xmit || 0.5, (c.signal === undefined ? 100 : c.signal) / 100), e = Career.strategyEffect(s.strategies, 'ScienceTransmission', { sci: v }); const note = e.delta.funds || e.delta.rep ? ' (strategies: ' + (e.delta.funds ? Math.round(e.delta.funds) + ' funds' : '') + (e.delta.funds && e.delta.rep ? ', ' : '') + (e.delta.rep ? Math.round(e.delta.rep * 10) / 10 + ' reputation' : '') + ')' : ''; return h('td', { class: 'num', title: note.trim(), text: (Math.round(e.total.sci * 10) / 10) + (note ? ' *' : '') }); })()))))),
         h('p', { class: 'hint', text: 'Gain multiplier ×' + s.diff.gain[1] + ' on this career is not applied to the table (it applies when the science is credited). The science report in the game can show a smaller number once you have already returned that subject.' }));
     }
 
@@ -274,7 +286,14 @@
               c.ledger.push({ id: c.nextId++, day: dayOf(s) + 30, label: 'Milestone: ' + r.label + (r.body ? ' (' + r.body + ')' : ''), kind: 'milestone', funds: r.reward.funds, sci: r.reward.sci, rep: r.reward.rep });
               changed();
             } }, 'Plan reward'))))))),
-        rows.length > 80 ? h('p', { class: 'hint', text: 'Showing the first 80 of ' + rows.length + '. Pick a body to narrow the list.' }) : null);
+        rows.length > 80 ? h('p', { class: 'hint', text: 'Showing the first 80 of ' + rows.length + '. Pick a body to narrow the list.' }) : null,
+        h('h4', { text: 'Records: five steps each' }),
+        h('p', { class: 'hint', text: 'Altitude, speed, distance and depth records pay in five steps as your best passes each mark (the game’s own thresholds, and the milestone reward of a record split five ways). Speed and distance count on any body, altitude only about the home world, depth only in the ocean. A loaded save marks the steps its best record has passed.' }),
+        h('div', { class: 'scroll' }, h('table', {},
+          h('thead', {}, h('tr', {}, ['Record', 'Step', 'At least', 'Funds', 'Science', 'Reputation'].map((t, i) => h('th', { class: i >= 2 ? 'num' : '', text: t })))),
+          h('tbody', {}, Career.recordTable(s).flatMap((rec) => rec.steps.map((st) => h('tr', { class: st.reached ? 'dim' : '' },
+            h('td', { text: st.step === 1 ? rec.label + (rec.best !== null ? ' (your best ' + Math.round(rec.best) + ' ' + rec.unit + ')' : '') : '' }), h('td', { text: String(st.step) + (st.reached ? ' (reached)' : '') }),
+            h('td', { class: 'num', text: st.threshold.toLocaleString('en-US') + ' ' + rec.unit }), h('td', { class: 'num', text: money(st.funds) }), h('td', { class: 'num', text: String(Math.round(st.sci * 10) / 10) }), h('td', { class: 'num', text: String(Math.round(st.rep * 10) / 10) }))))))));
     }
 
     // ---- strategies -------------------------------------------------------------------------------------------

@@ -155,3 +155,12 @@ test('ringNodes can build elliptical relay orbits: periapsis at the low altitude
   assert.ok(Math.abs(o.a * (1 - o.e) - (mun.radius + 100e3)) < 1);
   assert.ok(Math.abs(o.a * (1 + o.e) - (mun.radius + 400e3)) < 1);
 });
+
+test('coverage map: the probe antenna at every cell can be chosen', () => {
+  const nodes = [{ id: 'r1', name: 'relay', tracked: false, planned: true, loc: { type: 'orbit', body: 'Mun', orbit: Orb.orbitFromAltitudes(world.index.get('Mun'), 300000, 300000, 0, 0, 0, 0) }, antennas: [{ id: 'stock:RelayAntenna100', count: 2 }] }];
+  const P = { world, lookup, settings, nodes, t0: 0, horizon: 3 * Data.DAY, minSignal: 0.1 };
+  const weak = Pl.runSync(Pl.coverageGen(P, 'Mun', 90, 120, 1, Data.DAY, [{ id: 'stock:longAntenna', count: 1 }]));
+  const strong = Pl.runSync(Pl.coverageGen(P, 'Mun', 90, 120, 1, Data.DAY, [{ id: 'stock:HighGainAntenna', count: 1 }]));
+  const mean = (r) => Array.from(r.uptime).reduce((a, b) => a + b, 0) / r.uptime.length;
+  assert.ok(mean(strong) >= mean(weak), 'a bigger antenna on the lander never covers less');
+});

@@ -29,7 +29,7 @@
    * runs from t0 to t0 + horizon; after the last event (or the horizon) the final conic simply continues.
    * `body` is the world body the segment is measured about.
    */
-  function build(world, bodyId, orbit, t0, horizon, burns) {
+  function build(world, bodyId, orbit, t0, horizon, burns, maxSegments) {
     let body = world.index.get(bodyId);
     if (!body) return [];
     const tEnd = t0 + horizon;
@@ -39,10 +39,21 @@
     let tScan = t0;
     const r1 = [0, 0, 0], v1 = [0, 0, 0], r2 = [0, 0, 0], v2 = [0, 0, 0];
     // Impulsive burns { t, prograde, normal, radial } (m/s in the vessel's orbital frame), applied in time order.
-    const plan = (burns || []).filter((b) => b && isFinite(b.t) && b.t >= t0 && b.t < tEnd).sort((a, b) => a.t - b.t);
+    // A burn with a duration (seconds) is flown, not snapped: it is cut into short pulses spread across that time, centred on the node time, each aimed along the
+    // vessel's velocity and orbit plane at that moment (so a long burn bends like a real one and loses a little to gravity). Power and fuel are not tracked: the
+    // duration is yours to read off the rocket (the Missions tab shows each stage's burn time).
+    const pulses = [];
+    for (const b of burns || []) {
+      if (!b || !isFinite(b.t)) continue;
+      const dur = b.duration > 0 ? Math.min(b.duration, 86400) : 0;
+      const k = dur > 0 ? Math.max(2, Math.min(8, Math.ceil(dur / 60))) : 1;
+      for (let i = 0; i < k; i++) pulses.push({ t: dur > 0 ? b.t - dur / 2 + (dur * (i + 0.5)) / k : b.t, prograde: (b.prograde || 0) / k, normal: (b.normal || 0) / k, radial: (b.radial || 0) / k });
+    }
+    const plan = pulses.filter((b) => b && isFinite(b.t) && b.t >= t0 && b.t < tEnd).sort((a, b) => a.t - b.t);
     let nextBurn = 0;
 
-    for (let k = 0; k < MAX_SEGMENTS; k++) {
+    const segLimit = Math.max(2, Math.min(64, maxSegments || MAX_SEGMENTS));
+    for (let k = 0; k < segLimit; k++) {
       const p = Orb.prepare(el, body.gm);
       const rr = radialRange(el);
       const canExit = !!body.parentBody && (el.e > 1 || rr.hi > body.soiRadius);

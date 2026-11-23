@@ -142,7 +142,10 @@
           field('Build', select([['stages', 'In stages (each stage keeps the last one’s relays)'], ['all', 'All at once']], s.mode, (v) => { s.mode = v; saved(); renderSites(); }, 'Build mode')),
           field('Look ahead', select([['0.25', '3 months'], ['1', '1 year'], ['2', '2 years'], ['4', '4 years']], String(s.horizon), (v) => { s.horizon = parseFloat(v); saved(); }, 'Look ahead')),
           field('Uptime goal %', num(s.target, (v) => { s.target = v === null ? 99.5 : Math.max(50, Math.min(100, v)); saved(); }, { size: 5, label: 'global uptime goal' })),
-          field('Weakest usable signal %', num(s.minSignal, (v) => { s.minSignal = v === null ? 20 : Math.max(0, Math.min(100, v)); saved(); }, { size: 5, label: 'weakest signal' }))),
+          field('Weakest usable signal %', num(s.minSignal, (v) => { s.minSignal = v === null ? 20 : Math.max(0, Math.min(100, v)); saved(); }, { size: 5, label: 'weakest signal' })),
+          field('Launch cost per relay (funds)', num(s.launchFunds, (v) => { s.launchFunds = v === null ? 0 : Math.max(0, v); saved(); }, { size: 7, label: 'launch cost per relay', placeholder: '0' })),
+          field('Expected contract income (funds)', num(s.income, (v) => { s.income = v === null ? 0 : Math.max(0, v); saved(); }, { size: 7, label: 'expected funds income', placeholder: '0' })),
+          field('Expected science income', num(s.incomeSci, (v) => { s.incomeSci = v === null ? 0 : Math.max(0, v); saved(); }, { size: 5, label: 'expected science income', placeholder: '0' }))),
         h('label', { class: 'inline', style: 'color:var(--text);display:flex' },
           (() => { const i = h('input', { type: 'checkbox', 'aria-label': 'use the career unlocks' }); i.checked = !!s.useCareer; i.addEventListener('change', () => { s.useCareer = i.checked; saved(); renderOptions(); }); return i; })(),
           'Use what my career has unlocked' + (c ? '' : ' (no career loaded on the Career tab: everything counts as unlocked)')),
@@ -161,7 +164,7 @@
     function problem() {
       return {
         world: App.world, lookup: App.lookup, settings: App.simSettings(), sites: JSON.parse(JSON.stringify(s.sites)), mode: s.mode, t0: st.scenario.ut,
-        horizon: s.horizon * Data.YEAR, target: s.target / 100, minSignal: s.minSignal / 100, antennas: pool(), career: careerState(), dsnLevel: st.settings.dsnLevel, robust: true,
+        launchFunds: s.launchFunds || 0, horizon: s.horizon * Data.YEAR, target: s.target / 100, minSignal: s.minSignal / 100, antennas: pool(), career: careerState(), dsnLevel: st.settings.dsnLevel, robust: true,
       };
     }
 
@@ -209,7 +212,7 @@
         if (g.dsn) lines.push('  Upgrade the Tracking Station to level ' + g.dsn.to + (g.dsn.funds ? ' (' + money(g.dsn.funds) + ' funds)' : ''));
         lines.push('');
       }
-      lines.push('Total: ' + r.res.totals.relays + ' relays, ' + money(r.res.totals.funds) + ' funds (relay antennas plus a ' + money(r.res.bus) + '-fund bus each, no launch), ' + money(r.res.totals.science) + ' science');
+      lines.push('Total: ' + r.res.totals.relays + ' relays, ' + money(r.res.totals.funds) + ' funds (relay antennas plus a ' + money(r.res.bus) + '-fund bus each' + (r.res.totals.launchFunds ? ', and ' + money(r.res.totals.launchFunds) + ' of launches' : ', no launch') + '), ' + money(r.res.totals.science) + ' science');
       return lines.join('\n');
     }
     function copyText(t, btn) {
@@ -224,7 +227,7 @@
       const orbitLoc = (n) => { const b = w.index.get(n.loc.body), o = n.loc.orbit; return { type: 'orbit', body: b.id, pe: o.a * (1 - o.e) - b.radius, ap: o.a * (1 + o.e) - b.radius, i: o.i, lan: o.lan, w: o.w, phase: (((o.m0 / Orb.DEG) % 360) + 360) % 360 }; };
       const nodes = [];
       for (const n of r.res.relays) nodes.push(Scn.newNode({ name: n.name, tracked: false, planned: true, group: n.group, antennas: JSON.parse(JSON.stringify(n.antennas)), loc: orbitLoc(n) }));
-      const sn = Net.siteNodes(w, s.sites, pool(), st.settings.rangeMod);
+      const sn = Net.siteNodes(w, s.sites, pool(), App.effRange());
       for (const n of sn) nodes.push(Scn.newNode({ name: n.name, tracked: true, antennas: JSON.parse(JSON.stringify(n.antennas)), loc: n.loc.type === 'orbit' ? orbitLoc(n) : { type: 'landed', body: n.loc.body, lat: n.loc.lat, lon: n.loc.lon, alt: n.loc.alt || 0 } }));
       sc.nodes = sc.nodes.filter((n) => !n.planned).concat(nodes);
       App.saveState();
@@ -239,7 +242,7 @@
       const lines = groups.map((id) => {
         const n = g.planned.find((x) => x.group === id);
         const prof = En.lightProfile(App.world, { type: 'orbit', body: n.loc.body, orbit: n.loc.orbit }, { t0: st.scenario.ut });
-        const d = En.design({ profile: prof, loads: loads, state: cs, allowUnlock: true });
+        const d = En.design({ profile: prof, loads: loads, state: cs, allowUnlock: true, extra: (st.custom.power && Object.keys(st.custom.power).length ? st.custom.power : null) });
         const o = d.options[0];
         return n.name.replace(/ \d+\/\d+$/, '') + ': ' + (prof.share.min > 0.999 ? 'always in sunlight' : 'in sunlight ' + Math.round(prof.share.min * 100) + '% or more, longest darkness ' + Orb.formatDuration(prof.dark.max)) +
           (o ? '; lightest power: ' + o.parts.map((p) => p.n + '× ' + En.partOf(p.id).title).join(' + ') + ' (' + fmt(o.mass, 3) + ' t)' + (o.funds || (o.needs && o.needs.length) ? ', needs unlocking' : '') : '');
@@ -252,7 +255,7 @@
       const r = result.res;
       if (r.error) { out.replaceChildren(h('div', { class: 'card' }, h('p', { text: r.error }))); return; }
       const cs = careerState();
-      const fund = Net.fundingCheck(cs, r);
+      const fund = Net.fundingCheck(cs, r, { income: s.income, sci: s.incomeSci });
       const cards = [h('div', { class: 'card' },
         h('h2', { text: 'Your network' }),
         h('p', { text: r.stages.length + ' stage' + (r.stages.length === 1 ? '' : 's') + ', ' + r.totals.relays + ' new relays, about ' + money(r.totals.funds) + ' funds' + (r.totals.science ? ' and ' + money(r.totals.science) + ' science of research' : '') + ' (relay antennas, a small relay bus each, and what has to be unlocked; launches are not included).' }),
@@ -291,6 +294,20 @@
       const tbl = opts.length ? h('table', {}, h('thead', {}, h('tr', {}, ...['Altitude', 'Inclination', 'Space band', 'Science ×', 'Period', 'Land from it', 'Back up to it', 'Why'].map((t) => h('th', { text: t })))),
         h('tbody', {}, ...opts.map((o) => h('tr', {}, h('td', { text: km(o.alt) }), h('td', { text: o.inc + '°' }), h('td', { text: o.band }), h('td', { text: fmt(o.multiplier, 2) }), h('td', { text: Orb.formatDuration(o.period) }),
           h('td', { text: o.dvDown === null ? '—' : fmt(o.dvDown) + ' m/s' }), h('td', { text: o.dvUp === null ? 'set on the Missions tab' : fmt(o.dvUp) + ' m/s' }), h('td', { text: o.why }))))) : null;
+      // ore: how long the drills and the converter need to refill the ascent propellant
+      pl.mine = pl.mine || { drill: 'RadialDrill', n: 2, abundance: null, engineer: 0, isru: 'ISRU' };
+      const mi = pl.mine, ED = window.KSPEnergyData;
+      const sel = (label, value, options, on) => { const e = h('select', { 'aria-label': label }, options.map((o) => h('option', { value: String(o[0]), text: o[1] }))); e.value = String(value); e.addEventListener('change', () => on(e.value)); return e; };
+      const ore = lander && !lander.error ? Net.mining(pl.body, { abundance: mi.abundance, drills: [{ id: mi.drill, n: mi.n }], engineer: mi.engineer === -1 ? null : mi.engineer, isru: mi.isru, propTonnes: lander.propUp }) : null;
+      const oreBlock = lander && !lander.error ? h('div', {}, h('h3', { text: 'Refuel from ore' }),
+        h('div', { class: 'row' },
+          field('Drill', sel('drill part', mi.drill, Object.keys(ED.ore.drills).map((k) => [k, k === 'RadialDrill' ? 'Drill-O-Matic' : k === 'MiniDrill' ? 'Drill-O-Matic Junior' : k]), (v) => { mi.drill = v; saved(); renderPlace(); })),
+          field('How many', num(mi.n, (v) => { mi.n = v === null ? 2 : Math.max(0, Math.round(v)); saved(); renderPlace(); }, { size: 3, label: 'number of drills' })),
+          field('Converter', sel('converter part', mi.isru, Object.keys(ED.ore.isru).map((k) => [k, k === 'ISRU' ? 'Convert-O-Tron 250' : k === 'MiniISRU' ? 'Convert-O-Tron 125' : k]), (v) => { mi.isru = v; saved(); renderPlace(); })),
+          field('Engineer on board', sel('engineer stars', mi.engineer, [[-1, 'none'], [0, '0 stars'], [1, '1 star'], [2, '2 stars'], [3, '3 stars'], [4, '4 stars'], [5, '5 stars']], (v) => { mi.engineer = Number(v); saved(); renderPlace(); })),
+          field('Ore at the site (%)', num(mi.abundance, (v) => { mi.abundance = v === null ? null : Math.max(0, Math.min(100, v)); saved(); renderPlace(); }, { size: 4, label: 'ore abundance percent', placeholder: ore && !ore.error ? String(ore.abundance) : 'scan' }))),
+        ore && ore.error ? h('p', { class: 'hint', text: ore.error + '.' }) : h('p', { text: 'The drills dig ' + fmt(ore.drillOre, 3) + ' ore/s at ' + fmt(ore.abundance, 1) + '% and the converter can take ' + fmt(ore.converterOre, 3) + ' ore/s, so the ' + ore.at.limit + ' set the pace: ' + fmt(ore.at.tonnesPerHour, 2) + ' t of propellant per hour, ' + (ore.at.hours === null ? '' : fmt(ore.at.hours, 1) + ' h (' + fmt(ore.at.hours * 3600 / Orb.DAY * 1, 2) + ' days) for the ' + fmt(lander.propUp, 2) + ' t of the ascent') + '. Charge needed: about ' + fmt(ore.ec, 0) + '/s. Across the range of this body (' + ore.range[0] + '–' + ore.range[1] + '%): ' + fmt(ore.low.hours, 1) + ' h to ' + fmt(ore.high.hours, 1) + ' h.' }),
+        h('p', { class: 'hint', text: ore && !ore.error ? ore.note + ' Without an engineer on board the drills and the converter run at 5%; each star adds 20 points.' : '' })) : null;
       const candBox = h('div', {});
       const find = h('button', { class: 'btn', type: 'button' }, 'Find base or mine sites on ' + (body ? body.name : '…'));
       const candProg = h('span', { class: 'hint', role: 'status' });
@@ -323,6 +340,7 @@
           field('Base latitude limit (°)', num(pl.maxLat, (v) => { pl.maxLat = v === null ? 90 : Math.max(0, Math.min(90, v)); saved(); }, { size: 4, label: 'latitude limit' }))),
         opts.length ? h('div', {}, h('h3', { text: 'Station and lab orbits' }), tbl) : h('p', { class: 'hint', text: 'No orbit options for this body.' }),
         lander && !lander.error ? h('p', { text: 'A ' + fmt(pl.dry, 1) + ' t reusable lander at ' + fmt(pl.isp) + ' s needs about ' + fmt(lander.propTrip, 2) + ' t of propellant for the trip down and back up (' + fmt(lander.propDown, 2) + ' t down, ' + fmt(lander.propUp, 2) + ' t up). To refuel the ascent on the surface takes ' + fmt(lander.oreForUp) + ' ore (' + fmt(lander.oreForUp * 0.01, 2) + ' t), about ' + fmt(lander.refuelHours * 60) + ' minutes of one large converter at its full rate, if the drills keep up. The ratios are the game’s own: 0.5 ore per second becomes 0.45 liquid fuel and 0.55 oxidizer.' }) : (lander ? h('p', { class: 'hint', text: 'Lander figures need a default ascent allowance this body does not have (' + lander.error + '); use the Missions tab.' }) : null),
+        oreBlock,
         h('div', { class: 'row', style: 'margin-top:8px' }, find, candProg),
         shown ? (candTbl || h('p', { class: 'hint', text: 'No flat enough ground found with these limits.' })) : null,
         shown ? h('p', { class: 'hint', text: 'Link scores use ' + (shown.withRelays ? 'the relays of the plan above' : 'the ground stations only, no relays yet: generate a network first to see it with relays') + ', over one rotation of the body. Slopes are regional, not ground level (see the Landing tab).' }) : null].filter(Boolean));

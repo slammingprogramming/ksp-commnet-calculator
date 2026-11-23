@@ -48,11 +48,15 @@
     return (2 * t3 - 3 * t2 + 1) * a[1] + (t3 - 2 * t2 + t) * dt * a[3] + (-2 * t3 + 3 * t2) * b[1] + (t3 - t2) * dt * b[2];
   }
 
-  const hasAtmosphere = (bodyId) => !!Data.ATMOSPHERES[bodyId];
+  // Air of a world: the stock bodies' (Data.ATMOSPHERES), or the curves a planet pack gives its body (usePack, called when the world is rebuilt).
+  let packAir = {};
+  const atmOf = (bodyId) => packAir[bodyId] || Data.ATMOSPHERES[bodyId] || null;
+  function usePack(map) { packAir = map || {}; }
+  const hasAtmosphere = (bodyId) => !!atmOf(bodyId);
 
   /** Air at an altitude (m): { pressure kPa, temperature K, density kg/m^3, sound m/s }; zeros above the atmosphere. */
   function air(bodyId, alt) {
-    const at = Data.ATMOSPHERES[bodyId];
+    const at = atmOf(bodyId);
     if (!at || alt >= at.depth) return { pressure: 0, temperature: 0, density: 0, sound: 0 };
     const p = Math.max(0, curve(at.pressure, alt)), t = curve(at.temp, alt);
     const rho = p > 0 && t > 0 ? (p * 1000 * at.molarMass) / (K.gas * t) : 0;
@@ -61,7 +65,7 @@
 
   /** Shock temperature (K) at an altitude and speed (m/s); heat = the difficulty's Reentry Heating scale (default 1). */
   function shockTemperature(bodyId, alt, speed, heat) {
-    const at = Data.ATMOSPHERES[bodyId];
+    const at = atmOf(bodyId);
     const a = air(bodyId, alt);
     const mach = a.sound > 0 ? speed / a.sound : 0;
     const lerp = Math.pow(clamp01((mach - K.machStart) / (K.machEnd - K.machStart)), K.machExp);
@@ -93,7 +97,7 @@
 
   /** Speed and angle at the top of the atmosphere for an arriving orbit about the body (periapsis altitude and apoapsis altitude or null for an escape with speed vinf). */
   function entryFromOrbit(body, peAlt, apAlt, vinf) {
-    const at = Data.ATMOSPHERES[body.id];
+    const at = atmOf(body.id);
     const r = body.radius + at.depth, rp = body.radius + peAlt;
     if (!(rp < r)) return null;                    // periapsis above the atmosphere: no entry
     let a, vp;
@@ -117,7 +121,7 @@
    * Returns { samples, blackout: {start, end, ...} | null, partial, peak..., landed }.
    */
   function entry(body, o) {
-    const at = Data.ATMOSPHERES[body.id];
+    const at = atmOf(body.id);
     const heat = o.heat === undefined ? 1 : o.heat, link = o.link || 0;
     const beta = Math.max(1, o.ballistic || 300);
     const dt = 0.05, sampleEvery = 10;
@@ -189,7 +193,7 @@
    * (Real entries slow down with altitude; the entry() trajectory is the line through this map.)
    */
   function map(bodyId, o) {
-    const at = Data.ATMOSPHERES[bodyId];
+    const at = atmOf(bodyId);
     const nA = o.altSteps || 70, nV = o.speedSteps || 90;
     const vMax = o.maxSpeed || 8000, link = o.link || 0, heat = o.heat === undefined ? 1 : o.heat;
     const alts = [], speeds = [], grid = [];
@@ -203,7 +207,7 @@
 
   /** Slowest steady speed at which any plasma can form on the body (the lowest speed at which the shock temperature passes 1100 K at an altitude where the air is thick enough). */
   function minimumPlasmaSpeed(bodyId, heat) {
-    const at = Data.ATMOSPHERES[bodyId];
+    const at = atmOf(bodyId);
     let best = Infinity, bestAlt = null;
     for (let alt = 0; alt < at.depth; alt += at.depth / 400) {
       if (!(air(bodyId, alt).density > K.density)) continue;
@@ -216,7 +220,7 @@
   }
 
   return {
-    CONSTANTS: K, curve: curve, hasAtmosphere: hasAtmosphere, air: air, shockTemperature: shockTemperature, plasma: plasma,
+    CONSTANTS: K, curve: curve, usePack: usePack, atmosphere: atmOf, hasAtmosphere: hasAtmosphere, air: air, shockTemperature: shockTemperature, plasma: plasma,
     linkFactor: linkFactor, signalModifier: signalModifier, entryFromOrbit: entryFromOrbit, entry: entry, speedLimit: speedLimit,
     map: map, minimumPlasmaSpeed: minimumPlasmaSpeed,
   };

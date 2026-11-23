@@ -80,7 +80,7 @@ data, are in [How the model works](docs/model.md).
 * Orbits are two-body, as in the game, with opt-in **patched conics** for escape trajectories and transfers, and
   impulsive burns. Near Future reflectors and retracted antennas are modelled. **Plasma blackout** is modelled for
   atmospheric entries with the game's own rules.
-* Not modelled: orbital perturbations (the game has none), powered flight and fuel, other mods' signal multipliers.
+* Not modelled: orbital perturbations (the game has none), powered flight and fuel (a burn can last seconds), the game's seeded ore map, other mods' signal multipliers.
   See [what is and is not modelled](docs/model.md#accuracy-and-limits).
 * Works offline once opened (it installs like an app from the Pages site), asks the browser to refuse any network
   request, and has been run against the Real Solar System planet configs.

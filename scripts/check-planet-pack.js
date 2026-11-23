@@ -69,6 +69,8 @@ function main() {
   }
   assert.ok(Math.abs(world.calendar.day - home.rotPeriod) / home.rotPeriod < 0.02, 'the calendar follows the home world\'s day');
   const gas = placed.filter((b) => Pl.isGas(b)).map((b) => b.name);
+  const withAir = placed.filter((b) => b.atmosphere).map((b) => b.name + ' (' + Math.round(b.atmosphere.pressure[0][1]) + ' kPa)');
+  console.log('bodies with air curves read: ' + (withAir.join(', ') || 'none'));
   console.log('home world day ' + world.calendar.day + ' s, year ' + world.calendar.daysPerYear + ' days; gas giants: ' + (gas.join(', ') || 'none'));
 
   // the first moon of the home world: a lander on its far side, over a short window

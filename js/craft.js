@@ -17,6 +17,15 @@
   const byId = {};
   for (const p of CD.parts) { byId[p.id] = p; byId[p.id.replace(/\./g, '_')] = p; }
   const part = (id) => byId[id] || byId[String(id).replace(/\./g, '_')];
+  /** Teach the module parts read from mod .cfg files (Parsers.parsePartCfg): they are looked up like the stock ones. Stock ids are never replaced. */
+  function addParts(map) {
+    let n = 0;
+    for (const p of Object.values(map || {})) {
+      if (!p || !p.id || (byId[p.id] && !byId[p.id].mod)) continue;
+      byId[p.id] = p; byId[p.id.replace(/\./g, '_')] = p; n++;
+    }
+    return n;
+  }
 
   const val = (node, key) => { const v = node.vals.find((p) => p[0] === key); return v ? v[1] : undefined; };
   const num = (v, d) => { const n = parseFloat(v); return isFinite(n) ? n : d; };
@@ -92,6 +101,7 @@
     });
     return {
       name: header.ship || '', type: header.type || '', version: header.version || '', description: header.description || '',
+      size: header.size ? String(header.size).split(',').map(Number).filter((x) => isFinite(x)) : null,   // bounding box (x, y, z in metres) the game stores with the craft
       parts: parts, missing: [...new Set(parts.filter((p) => !p.db).map((p) => p.name))],
     };
   }
@@ -146,6 +156,16 @@
     };
     const total = () => { let m = 0; for (let i = 0; i < n; i++) if (alive[i]) m += massOf(i); return m; };
 
+    // multi-mode engines (RAPIER): opts.mode 'atmosphere' runs the air-breathing mode, anything else the one that carries its own oxidiser
+    // (the first mode that needs no intake air; modes list the intake air as a propellant with no density)
+    const wantAir = opts.mode === 'atmosphere';
+    const eng = (i) => {
+      const list = P[i].db.eng;
+      if (list.length < 2) return list[0];
+      const air = list.filter((m) => m.props.some((q) => q[0] === 'IntakeAir'));
+      const own = list.filter((m) => !m.props.some((q) => q[0] === 'IntakeAir'));
+      return (wantAir ? air[0] : own[0]) || list[0];
+    };
     const out = [];
     const stageNumbers = [...new Set(P.map((p) => p.istg).filter((s) => s >= 0))].sort((a, b) => b - a);
     for (const s of stageNumbers) {
@@ -174,13 +194,14 @@
       let dv = 0, dvAsl = 0, time = 0, m = m0, thrustVac = 0, thrustAsl = 0, guard = 0;
       const lit = new Set(engines);
       thrustVac = 0;
-      for (const i of lit) { const e = P[i].db.eng[0]; thrustVac += e.thrust * (P[i].thrust / 100); thrustAsl += e.thrust * (P[i].thrust / 100) * ((e.isp[1] || e.isp[0]) / e.isp[0]); }
+      for (const i of lit) { const e = eng(i); thrustVac += e.thrust * (P[i].thrust / 100); thrustAsl += e.thrust * (P[i].thrust / 100) * ((e.isp[1] || e.isp[0]) / e.isp[0]); }
       while (guard++ < 40) {
         const flows = [];                                       // per running engine: tank usage rates (t/s) and thrust
         let ft = 0, mdotV = 0, mdotA = 0, running = 0;
         for (const i of lit) {
-          const e = P[i].db.eng[0];
-          const props = e.props.filter((q) => (CD.resources[q[0]] || {}).density > 0);
+          const e = eng(i);
+          // intake air comes from the atmosphere, not from a tank (the jet's Isp is per unit of fuel only)
+          const props = e.props.filter((q) => q[0] !== 'IntakeAir' && (CD.resources[q[0]] || {}).density > 0);
           // sources: tanks reachable without crossing a blocker
           const seen = new Set([i]), q = [i], tanks = [];
           while (q.length) {
@@ -216,7 +237,7 @@
         const mEnd = m - mdotV * dt;
         const ve = ft / mdotV;                                  // effective exhaust speed, m/s (kN / (t/s))
         dv += ve * Math.log(m / mEnd);
-        const fa = flows.reduce((a, f) => a + f.thrA, 0), ma = flows.reduce((a, f) => a + f.thrA / (f.thr / f.mdot) / ((P[f.i].db.eng[0].isp[1] || P[f.i].db.eng[0].isp[0]) / P[f.i].db.eng[0].isp[0]), 0);
+        const fa = flows.reduce((a, f) => a + f.thrA, 0), ma = flows.reduce((a, f) => a + f.thrA / (f.thr / f.mdot) / ((eng(f.i).isp[1] || eng(f.i).isp[0]) / eng(f.i).isp[0]), 0);
         dvAsl += (ma > 0 ? fa / ma : ve) * Math.log(m / mEnd);
         time += dt;
         for (const [key, r] of use) { const [t, res] = key.split('|'); amount[+t][res] = Math.max(0, amount[+t][res] - r * dt); }
@@ -246,5 +267,5 @@
     return { value: value, mass: mass, parts: parts };
   }
 
-  return { parseCraft: parseCraft, parseLoadMeta: parseLoadMeta, summarize: summarize, stages: stages, recoverable: recoverable, dryCost: dryCost, part: part, G0: G0 };
+  return { addParts: addParts, parseCraft: parseCraft, parseLoadMeta: parseLoadMeta, summarize: summarize, stages: stages, recoverable: recoverable, dryCost: dryCost, part: part, G0: G0 };
 });

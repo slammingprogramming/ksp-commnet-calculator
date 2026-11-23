@@ -93,7 +93,8 @@
         if (!l) { row.push(null); continue; }
         const vd = norm([l.v1[0] - va[0], l.v1[1] - va[1], l.v1[2] - va[2]]);
         const vr = norm([l.v2[0] - vb[0], l.v2[1] - vb[1], l.v2[2] - vb[2]]);
-        const dd = burn(a.gm, rPark, vd), dr = rCap ? burn(b.gm, rCap, vr) : 0;
+        // `o.departBurn(vinf)` / `o.arriveBurn(vinf)` let a caller price the two ends itself (e.g. leaving from a moon of the departure planet)
+        const dd = o && o.departBurn ? o.departBurn(vd) : burn(a.gm, rPark, vd), dr = o && o.arriveBurn ? o.arriveBurn(vr) : rCap ? burn(b.gm, rCap, vr) : 0;
         row.push({ depart: td, tof: tof, arrive: td + tof, vinfDepart: vd, vinfArrive: vr, dvDepart: dd, dvArrive: dr, total: dd + dr });
       }
       grid.push(row);
@@ -119,5 +120,62 @@
     return { windows: good, grid: grid, synodic: synodic, hohmann: hohmann, tofRange: [tofLo, tofHi] };
   }
 
-  return { lambert: lambert, burn: burn, windows: windows };
+  /**
+   * Encounter targeting: the single burn that puts a vessel in orbit about `bodyId` on a path that reaches the centre of one of that body's moons (or planets
+   * about a star). For every candidate burn time over `horizon` and flight time, a Lambert arc joins the vessel's position to the target's position at arrival; the
+   * burn is the difference between the arc's start velocity and the vessel's velocity, and is split into the game's manoeuvre-node axes (prograde, normal, radial) so
+   * it can be entered as a burn (`loc.burns`). The best few burns are returned, one per local minimum, cheapest first; the arrival speed relative to the target
+   * (and the capture burn from a circular orbit `captureAlt` above its surface, when given) is included. A centre hit is the aim: nudge the periapsis afterwards.
+   * o: { captureAlt (m), maxTof (s), count (default 4) }.
+   */
+  function targetBurn(world, bodyId, orbit, targetId, t0, horizon, o) {
+    o = o || {};
+    const X = world.index.get(bodyId), T = world.index.get(targetId);
+    if (!X || !T || T.parentBody !== X || !T._p) return null;
+    const pv = Orb.prepare(orbit, X.gm), pt = T._p;
+    const rA = orbit.a * (1 + (orbit.e || 0)), hoh = Math.PI * Math.sqrt(Math.pow((rA + T.orbit.a) / 2, 3) / X.gm);
+    const tofLo = Math.max(0.25 * hoh, 1800), tofHi = Math.min(o.maxTof || 1.6 * hoh, 3 * hoh);
+    const nd = Math.max(240, Math.min(1200, Math.round(horizon / (pv.period / 24))));
+    const nt = 28;
+    const r1 = [0, 0, 0], v1 = [0, 0, 0], r2 = [0, 0, 0], v2 = [0, 0, 0];
+    const rCap = o.captureAlt == null ? null : T.radius + o.captureAlt;
+    const best = [];
+    for (let i = 0; i < nd; i++) {
+      const td = t0 + (horizon * i) / (nd - 1);
+      Orb.position(pv, td, r1); Orb.velocity(pv, td, v1);
+      let top = null;
+      for (let j = 0; j < nt; j++) {
+        const tof = tofLo + ((tofHi - tofLo) * j) / (nt - 1);
+        Orb.position(pt, td + tof, r2); Orb.velocity(pt, td + tof, v2);
+        const l = lambert(X.gm, r1, r2, tof, false);
+        if (!l) continue;
+        const dv = [l.v1[0] - v1[0], l.v1[1] - v1[1], l.v1[2] - v1[2]];
+        const mag = norm(dv), vinf = norm([l.v2[0] - v2[0], l.v2[1] - v2[1], l.v2[2] - v2[2]]);
+        const cap = rCap ? burn(T.gm, rCap, vinf) : 0;
+        if (!top || mag + cap < top.total) top = { t: td, tof: tof, arrive: td + tof, dv: dv, burn: mag, vinf: vinf, capture: cap, total: mag + cap, r: r1.slice(), v: v1.slice() };
+      }
+      best.push(top);
+    }
+    const out = [];
+    for (let i = 0; i < nd; i++) {
+      const c = best[i];
+      if (!c) continue;
+      const lo = i > 0 && best[i - 1] ? best[i - 1].total : Infinity, hi = i < nd - 1 && best[i + 1] ? best[i + 1].total : Infinity;
+      if (c.total <= lo && c.total < hi) out.push(c);
+    }
+    out.sort((a, b) => a.total - b.total);
+    const kept = [];
+    for (const c of out) if (kept.every((k) => Math.abs(k.t - c.t) > pv.period / 2) && kept.length < (o.count || 4)) kept.push(c);
+    return kept.map((c) => {
+      // the game's axes: prograde along v, normal along r x v, radial = normal x prograde (see Trajectory.applyBurn)
+      const vl = norm(c.v), pg = [c.v[0] / vl, c.v[1] / vl, c.v[2] / vl];
+      let n = [c.r[1] * c.v[2] - c.r[2] * c.v[1], c.r[2] * c.v[0] - c.r[0] * c.v[2], c.r[0] * c.v[1] - c.r[1] * c.v[0]];
+      const nl = norm(n); n = [n[0] / nl, n[1] / nl, n[2] / nl];
+      const rad = [n[1] * pg[2] - n[2] * pg[1], n[2] * pg[0] - n[0] * pg[2], n[0] * pg[1] - n[1] * pg[0]];
+      const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      return { t: c.t, arrive: c.arrive, flight: c.tof, dv: c.burn, prograde: dot(c.dv, pg), normal: dot(c.dv, n), radial: dot(c.dv, rad), vinfArrive: c.vinf, captureDv: c.capture, total: c.total };
+    });
+  }
+
+  return { lambert: lambert, burn: burn, windows: windows, targetBurn: targetBurn };
 });

@@ -169,8 +169,10 @@
   /**
    * entries: [{id, count}]; lookup(id) -> antenna. Returns the vessel's power for its own connection
    * (`own`, every antenna) and when relaying for others (`relay`, relay antennas only).
+   * opts.relayEnabler: the vessel carries a mod's relay-enabler part that is switched on (CommNet.ModuleRelayEnabler); the game then lets it relay with
+   * its direct antennas whenever those are stronger than its relay antennas (CommNetVessel.UpdateComm copies the transmit power to the relay power).
    */
-  function vesselStats(entries, lookup, rangeModifier) {
+  function vesselStats(entries, lookup, rangeModifier, opts) {
     const mod = rangeModifier == null ? 1 : rangeModifier;
     const all = [], relay = [];
     let unknown = 0, antennaCount = 0;
@@ -189,6 +191,7 @@
       if (a.type === 'relay') relay.push(item);
     }
     const ap = antennaPowers(all);
+    if (opts && opts.relayEnabler && ap.transmit > ap.relay) ap.relay = ap.transmit;
     const rel = combine(relay);
     const fallback = ap.own === 0 && unknown === 0;
     return {
@@ -223,7 +226,7 @@
     const last = nodes.length - 1;
     const powers = nodes.map((n, i) => {
       if (n.kind === 'dsn') return { power: dsnPower(n, ctx.dsnModifier), role: 'dsn', stats: null };
-      const stats = vesselStats(n.antennas, ctx.lookup, ctx.rangeModifier);
+      const stats = vesselStats(n.antennas, ctx.lookup, ctx.rangeModifier, { relayEnabler: n.relayEnabler });
       if (i === last) return { power: stats.own, role: 'endpoint', stats: stats };
       // interior vessel, or a vessel acting as the far end of the chain: relays for others
       return { power: stats.relay, role: 'relay', stats: stats };

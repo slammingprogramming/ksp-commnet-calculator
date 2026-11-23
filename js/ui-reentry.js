@@ -28,7 +28,7 @@
     const out = h('div', {});
     const canvas = h('canvas', { class: 'tracker-canvas', role: 'img', 'aria-label': 'Altitude against speed with the entry path and the blackout region' });
 
-    const bodyOpts = Data.bodies.filter((b) => R.hasAtmosphere(b.id));
+    const bodyOpts = App.world.bodies.filter((b) => !b.star && R.hasAtmosphere(b.id));
     const sel = (label, key, opts, num) => {
       const s = h('select', { 'aria-label': label }, opts.map((o) => h('option', { value: String(o[1]), text: o[0] })));
       s.value = String(rs[key]);
@@ -57,7 +57,7 @@
       form.replaceChildren(...[
         h('h2', { text: 'Reentry and plasma blackout' }),
         h('p', { class: 'hint', text: 'Plasma around a re-entering vessel blacks out CommNet when the difficulty option Plasma Blackout is on. The rules come from the game’s code; this tab finds when and where they trigger on your entry so you can plan the landing around the silence.' }),
-        h('p', { class: 'hint', text: 'This tab always uses the stock game’s bodies and atmospheres. A planet pack that rescales them (JNSQ, Real Solar System) is not applied here, so its entries need their own atmosphere data.' }),
+        h('p', { class: 'hint', text: 'Bodies and atmospheres are the ones in the world you set up: the stock game’s, or the air curves a planet pack gives its bodies when you import it. A pack body whose config lacks the air curves uses the stock body of the same name if there is one.' }),
         h('div', { class: 'row' }, field('Body', bodySel), field('Describe the entry', modeSel)),
         rs.mode === 'orbit'
           ? h('div', { class: 'row' }, field('Periapsis altitude (m)', num('Periapsis altitude in metres', 'pe', 1000), 'inside the atmosphere'), field('Apoapsis altitude (m, or blank for an escape)', num('Apoapsis altitude in metres', 'ap', 100000), 'a negative value means an escape'), field('Escape speed left over (m/s)', num('Speed at infinity in metres per second', 'vinf', 50), 'used when the apoapsis is negative'))
@@ -75,15 +75,15 @@
     }
 
     function render() {
-      const body = Data.bodies.find((b) => b.id === rs.body);
+      const body = App.world.bodies.find((b) => b.id === rs.body);
       const e0 = entryOf(body);
       const kids = [];
-      if (!e0) { out.replaceChildren(h('div', { class: 'card warn', text: 'The periapsis is above the top of the atmosphere (' + km(Data.ATMOSPHERES[rs.body].depth) + '), so the vessel never enters.' })); draw(null); return; }
+      if (!e0) { out.replaceChildren(h('div', { class: 'card warn', text: 'The periapsis is above the top of the atmosphere (' + km(R.atmosphere(rs.body).depth) + '), so the vessel never enters.' })); draw(null); return; }
       const o = { speed: e0.speed, angle: e0.angle, ballistic: rs.ballistic, heat: rs.heat, link: rs.link };
       const e = R.entry(body, o);
       kids.push(h('div', { class: 'card' },
         h('h3', { text: 'The entry' }),
-        h('p', { class: 'stats', text: 'Arrives at ' + e0.speed.toFixed(0) + ' m/s, ' + e0.angle.toFixed(1) + '° below the horizon, ' + km(Data.ATMOSPHERES[rs.body].depth) + ' up. ' +
+        h('p', { class: 'stats', text: 'Arrives at ' + e0.speed.toFixed(0) + ' m/s, ' + e0.angle.toFixed(1) + '° below the horizon, ' + km(R.atmosphere(rs.body).depth) + ' up. ' +
           (e.skipped ? 'At this angle the vessel skips back out of the atmosphere without ever dropping low (try a lower periapsis or a steeper angle).' : e.landed ? 'It reaches the ground after ' + dur(e.flightTime) + ' and ' + km(e.final.range) + ' downrange (no lift, no parachutes).' : 'It is still flying after ' + dur(e.flightTime) + '.') }),
         h('p', { class: 'hint', text: 'Peak deceleration ' + e.peakDecel.toFixed(1) + ' g · peak shock temperature ' + Math.round(e.peakShock) + ' K · the shock heating in the game depends on the Reentry Heating setting.' })));
       if (e.blackout) {
@@ -123,7 +123,7 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, W, H);
       if (!e) return;
-      const depth = Data.ATMOSPHERES[rs.body].depth;
+      const depth = R.atmosphere(rs.body).depth;
       const vMax = Math.max(6000, Math.ceil((e.samples.length ? e.samples[0].speed : 3000) / 1000 + 1) * 1000);
       const m = R.map(rs.body, { link: rs.link, heat: rs.heat, maxSpeed: vMax });
       const pad = { l: 46, r: 8, t: 8, b: 30 };

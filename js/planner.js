@@ -270,6 +270,27 @@
           const score = { c: c, res: d.res, worst: worstUptime(d.res), mean: meanUptime(d.res) };
           if (!best || score.worst > best.worst + 0.0005 || (Math.abs(score.worst - best.worst) <= 0.0005 && c.cfg.n < best.c.cfg.n)) best = score;
         }
+        // local search around the winner (the grid above is coarse): nudge the altitude and the inclination, keep a neighbour that does clearly better
+        // over the full horizon, or as well with a lower orbit; at most two rounds, so a plan costs a handful of extra scans at most
+        if (P.refine !== false && !best.c.cfg.keo) {
+          const lim = world.altitudeLimits(cause.body), bd = world.index.get(cause.body), cap = 0.6 * (bd.soiRadius - bd.radius);
+          for (let round = 0; round < 2; round++) {
+            const c0 = best.c.cfg, tried = [];
+            const near = [{ alt: c0.alt * 0.8, inc: c0.inc }, { alt: c0.alt * 1.25, inc: c0.inc }, { alt: c0.alt, inc: Math.max(0, c0.inc - 30) }, { alt: c0.alt, inc: Math.min(90, c0.inc + 30) }];
+            let moved = false;
+            for (const q of near) {
+              const alt = Math.round(Math.min(cap, Math.max(lim.min, q.alt)) / 1000) * 1000;
+              if ((alt === c0.alt && q.inc === c0.inc) || tried.some((t) => t.alt === alt && t.inc === q.inc)) continue;
+              tried.push({ alt: alt, inc: q.inc });
+              const cfg2 = { n: c0.n, inc: q.inc, alt: alt, ap: c0.ap ? Math.max(alt, c0.ap) : undefined, keo: false };
+              const nodes2 = ringNodes(world, cause.body, cfg2.n, cfg2.alt, cfg2.inc, 0, 0, ample, 'ring:' + cause.body, world.index.get(cause.body).name + ' relay', cfg2.ap);
+              const d2 = yield* diagnose(working.concat(nodes2), true);
+              const w2 = worstUptime(d2.res);
+              if (w2 > best.worst + 0.0005 || (Math.abs(w2 - best.worst) <= 0.0005 && alt < best.c.cfg.alt)) { best = { c: { cfg: cfg2, nodes: nodes2 }, res: d2.res, worst: w2, mean: meanUptime(d2.res) }; moved = true; }
+            }
+            if (!moved) break;
+          }
+        }
         const cfg = best.c.cfg;
         proposal = {
           family: 'ring', title: (cfg.keo ? 'Keostationary relay ring around ' : cfg.ap ? 'Elliptical relay orbits around ' : 'Relay ring around ') + world.index.get(cause.body).name,
@@ -527,14 +548,15 @@
   /* ---------- surface coverage map of a body ---------- */
 
   /** Uptime at a grid of surface points on `bodyId`, given the scenario's relays. Generator. */
-  function* coverageGen(P, bodyId, latStep, lonStep, windows, span) {
+  /** `antennas` (default one Communotron 16) is what the probe at every cell carries; `span` is the length of each averaged window in seconds. */
+  function* coverageGen(P, bodyId, latStep, lonStep, windows, span, antennas) {
     const world = P.world;
     const nodes = P.nodes.filter((n) => !n.tracked || n.planned).map((n) => Object.assign({}, n, { tracked: false }));
     const cells = [];
     for (let lat = -90 + latStep / 2; lat < 90; lat += latStep) {
       for (let lon = -180 + lonStep / 2; lon < 180; lon += lonStep) {
         cells.push({ lat: lat, lon: lon });
-        nodes.push({ id: 'cell:' + cells.length, name: 'cell', tracked: true, cell: true, loc: { type: 'landed', body: bodyId, lat: lat, lon: lon, alt: 0 }, antennas: [{ id: 'stock:longAntenna', count: 1 }] });
+        nodes.push({ id: 'cell:' + cells.length, name: 'cell', tracked: true, cell: true, loc: { type: 'landed', body: bodyId, lat: lat, lon: lon, alt: 0 }, antennas: clone(antennas && antennas.length ? antennas : [{ id: 'stock:longAntenna', count: 1 }]) });
       }
     }
     const sim = Sim.createSim({ world: world, lookup: P.lookup, settings: Object.assign({}, P.settings, { minSignal: P.minSignal || 0 }), nodes: nodes, trajectory: { t0: P.t0, horizon: P.horizon } });

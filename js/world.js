@@ -28,7 +28,7 @@
       return {
         id: d.id, name: d.name, pack: d.pack, radius: d.radius, gm: d.gm, atmo: d.atmo || 0, star: !!d.star,
         parent: useOpm ? d.opm.parent : d.parent, rot: useOpm && d.opm.rot ? d.opm.rot : d.rot,
-        orbit: useOpm ? d.opm.orbit : d.orbit, soi: d.soi || null, rot0: d.rot0 == null ? null : d.rot0, subParentLon: d.subParentLon, gas: !!d.gas,
+        orbit: useOpm ? d.opm.orbit : d.orbit, soi: d.soi || null, rot0: d.rot0 == null ? null : d.rot0, subParentLon: d.subParentLon, gas: !!d.gas, atmosphere: d.atmosphere || null,
       };
     });
     const byId = new Map(resolved.map((b) => [b.id, b]));
@@ -73,7 +73,9 @@
       b.parentIdx = b.parentBody ? b.parentBody.idx : -1;
       b.moons = [];
       b.hasAtmo = b.atmo > 0;
-      if (b.orbit) b._p = Orb.prepare(b.orbit, b.parentBody.gm);
+      // SigmaBinary pairs (OPM's Plock and Karen): the moon's orbit is the separation of the two, the pair swings round their common centre and the period follows both masses
+      b.binary = !!(b.parentBody && Data.BINARIES && Data.BINARIES[b.id] === b.parent && opts.binaries !== false);
+      if (b.orbit) b._p = Orb.prepare(b.orbit, b.parentBody.gm + (b.binary ? b.gm : 0));
       b.orbitalPeriod = b._p ? b._p.period : Infinity;
       b.rotPeriod = b.rot === 'locked' ? b.orbitalPeriod : b.rot;
       b.locked = b.rot === 'locked';
@@ -120,6 +122,13 @@
         if (!b._p) { buf[i * 3] = buf[i * 3 + 1] = buf[i * 3 + 2] = 0; continue; }
         Orb.position(b._p, t, tmp);
         const k = b.parentIdx * 3;
+        if (b.binary) {
+          // the parent's slot holds the common centre until here: the moon sits (1 - f) of the separation beyond it, the parent f of it on the other side
+          const f = b.gm / (b.gm + b.parentBody.gm);
+          buf[i * 3] = buf[k] + (1 - f) * tmp[0]; buf[i * 3 + 1] = buf[k + 1] + (1 - f) * tmp[1]; buf[i * 3 + 2] = buf[k + 2] + (1 - f) * tmp[2];
+          buf[k] -= f * tmp[0]; buf[k + 1] -= f * tmp[1]; buf[k + 2] -= f * tmp[2];
+          continue;
+        }
         buf[i * 3] = buf[k] + tmp[0];
         buf[i * 3 + 1] = buf[k + 1] + tmp[1];
         buf[i * 3 + 2] = buf[k + 2] + tmp[2];

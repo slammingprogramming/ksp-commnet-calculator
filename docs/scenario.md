@@ -51,7 +51,7 @@ enabled). Vessels that sit in an orbit the app cannot read are listed but greyed
 
 KSP moves a vessel along one orbit at a time and hands it to the next body when it crosses a sphere-of-influence edge.
 Tick **Follow patched conics** on a vessel to do the same: the app finds the exit or encounter, converts the state, and
-carries on, up to 8 legs and 25 years ahead, with no further burns.
+carries on, up to 16 legs and 25 years ahead by default (both are in the settings panel under *Patched conics*), with no further burns.
 
 ![An escape probe set to follow patched conics](img/scenario-patched.png)
 
@@ -71,7 +71,7 @@ vessel (below).
 
 An orbiting vessel has a **Manoeuvres** list. **Add a burn** gives it a time and a prograde, normal and radial speed
 change in m/s (prograde along the velocity, normal out of the orbital plane, radial away from the body); the card shows
-the total. The burns are impulsive and applied in time order; after the last one the vessel follows its patched conics,
+the total. A burn is an instant impulse unless you give it a duration (*lasts s*): it is then flown as short pulses centred on the time, each aimed along the velocity at that moment. Burns are applied in time order; after the last one the vessel follows its patched conics,
 so a transfer, a capture or an escape appears in the Tracker and in every link calculation. Up to 12 burns per vessel
 are kept, and they are part of exports and share links. Use the [Launch windows](launch-windows.md) tab to find when to
 burn and how much.

@@ -9,6 +9,7 @@
   const Orb = window.KSPOrbits;
   const CD = window.KSPCareerData;
   const Craft = window.KSPCraft;
+  const Parsers = window.KSPParsers;
   const Career = window.KSPCareer;
   const Mission = window.KSPMission;
   const h = App.h;
@@ -64,6 +65,9 @@
     const M = () => st().missions;
     const careerState = () => { const c = st().career; if (!c.state) c.state = Career.newState('normal'); return c; };
     const changed = () => { App.saveState(); render(); };
+    // mod rocket parts the player imported earlier are known again before any .craft is read
+    const knownParts = () => { st().custom.parts = st().custom.parts || {}; return st().custom.parts; };
+    Craft.addParts(knownParts());
 
     // ---- rockets ----------------------------------------------------------------------------------------------
     function addCrafts(files) {
@@ -81,7 +85,7 @@
           c.missing.forEach((m) => missing.add(m));
           const entry = {
             id: M().nextId++, name: c.name || j.name, type: c.type || 'VAB', cost: sum.cost, dryCost: sum.dryCost, fuelCost: sum.fuelCost, mass: sum.mass, dryMass: sum.dryMass,
-            parts: sum.parts, crew: crew, missing: c.missing, names: names, dv: r.dv, dvAsl: r.dvAsl, recover: rec.value, recoverMass: rec.mass,
+            size: c.size, parts: sum.parts, crew: crew, missing: c.missing, names: names, dv: r.dv, dvAsl: r.dvAsl, dvAir: c.parts.some((p) => p.db && p.db.eng && p.db.eng.length > 1) ? Craft.stages(c, { mode: 'atmosphere' }).dv : null, recover: rec.value, recoverMass: rec.mass,
             stages: r.stages.filter((s) => s.engines || s.dropped).map((s) => ({ stage: s.stage, dv: s.dv, dvAsl: s.dvAsl, time: s.time, m0: s.m0, m1: s.m1, twr: s.twr, thrust: s.thrust, engines: s.engines })),
           };
           M().crafts.push(entry);
@@ -112,13 +116,13 @@
       const body = (k, label) => field(label || 'Body', select(bodiesOpt(), leg[k] || 'Kerbin', (v) => set(k, v), label || 'Body'));
       const km = (k, label, ph) => field(label, num(leg[k], (v) => set(k, v), { size: 5, label: label, placeholder: ph || '' }));
       switch (leg.type) {
-        case 'launch': return [body('body'), km('alt', 'Orbit km'), field('Losses m/s', num(leg.losses, (v) => set('losses', v), { size: 5, label: 'losses', placeholder: 'default' }))];
+        case 'launch': return [body('body'), km('alt', 'Orbit km'), field('Losses m/s', num(leg.losses, (v) => set('losses', v), { size: 5, label: 'losses', placeholder: 'default' })), field('or simulate: thrust-to-weight', num(leg.twr, (v) => set('twr', v), { size: 4, label: 'thrust to weight', placeholder: 'off' }))];
         case 'transfer': return [body('from', 'From'), body('to', 'To'), km('park', 'Parking km'), km('capture', 'Capture km', 'fly-by'),
           field('Wait days', num(leg.after, (v) => set('after', v), { size: 4, label: 'wait', placeholder: '0' })),
           field('Window', select([['earliest', 'Earliest'], ['cheapest', 'Cheapest']], leg.pick || 'earliest', (v) => set('pick', v), 'Window'))];
         case 'land': return [body('body'), km('alt', 'From km'), field('Margin %', num(Math.round((leg.margin === undefined ? 0.15 : leg.margin) * 100), (v) => set('margin', (v || 0) / 100), { size: 4, label: 'margin' })),
           field('Parachutes', h('input', { type: 'checkbox', checked: !!leg.chutes, 'aria-label': 'Parachutes', onchange: (e) => set('chutes', e.target.checked) }))];
-        case 'ascent': return [body('body'), km('alt', 'To km'), field('Losses m/s', num(leg.losses, (v) => set('losses', v), { size: 5, label: 'losses', placeholder: 'default' }))];
+        case 'ascent': return [body('body'), km('alt', 'To km'), field('Losses m/s', num(leg.losses, (v) => set('losses', v), { size: 5, label: 'losses', placeholder: 'default' })), field('or simulate: thrust-to-weight', num(leg.twr, (v) => set('twr', v), { size: 4, label: 'thrust to weight', placeholder: 'off' }))];
         case 'return': return [body('body', 'Moon'), km('alt', 'From km'), km('pe', 'Periapsis km')];
         case 'plane': return [body('body'), km('alt', 'Orbit km'), km('degrees', 'Degrees')];
         case 'custom': return [field('Name', text(leg.label, (v) => set('label', v), { size: 14, label: 'Name' })), km('dv', 'Δv m/s'), km('days', 'Days')];
@@ -137,12 +141,23 @@
     }
 
     function rocketCard(m) {
+      const partFile = h('input', { type: 'file', accept: '.cfg,.txt', multiple: true, hidden: true, 'aria-label': 'Mod part files' });
+      partFile.addEventListener('change', async () => {
+        const dens = {}; Object.keys(CD.resources).forEach((k) => { dens[k] = CD.resources[k]; });
+        let n = 0;
+        for (const f of Array.from(partFile.files || [])) { try { const got = Parsers.parsePartCfg(await f.text(), dens); Object.assign(knownParts(), got); n += Craft.addParts(got); } catch (e) { /* unreadable file: skipped */ } }
+        status.className = n ? 'status ok' : 'status bad';
+        status.textContent = n ? n + ' mod parts read. Import the rockets that use them (again, if they were listed as missing parts).' : 'No tanks, engines or other parts with a price and a mass found in those files.';
+        partFile.value = ''; changed();
+      });
       const file = h('input', { type: 'file', accept: '.craft', multiple: true, hidden: true, 'aria-label': 'Rocket files' });
       file.addEventListener('change', () => { addCrafts(file.files || []); file.value = ''; });
       return h('div', { class: 'card' },
         h('h2', { text: 'Rockets' }),
         h('p', { class: 'hint', text: 'Import the .craft files you built (KSP/saves/<save>/Ships/VAB or SPH). The app reads each part with its price and mass, and works out the delta-v stage by stage from your staging. Nothing is uploaded.' }),
         h('div', { class: 'row' }, h('button', { class: 'btn small', type: 'button', onclick: () => file.click() }, 'Import .craft files…'), file,
+          h('button', { class: 'btn small ghost', type: 'button', title: 'Pick the part .cfg files of a mod so rockets that use its tanks, engines and decouplers get a price, a mass and a delta-v', onclick: () => partFile.click() }, 'Import mod parts (.cfg)…'), partFile,
+          Object.keys(knownParts()).length ? h('button', { class: 'btn small ghost danger', type: 'button', onclick: () => { st().custom.parts = {}; changed(); } }, 'Forget ' + Object.keys(knownParts()).length + ' mod parts (needs a reload)') : null,
           m.crafts.length ? h('button', { class: 'btn small ghost danger', type: 'button', onclick: () => { m.crafts = []; m.list.forEach((x) => { x.craft = null; }); changed(); } }, 'Forget all rockets') : null),
         status,
         m.crafts.length ? h('div', { class: 'scroll' }, h('table', {},
@@ -150,7 +165,7 @@
           h('tbody', {}, m.crafts.map((c) => h('tr', {},
             h('td', { text: c.name + (c.type ? ' (' + c.type + ')' : ''), title: c.missing.length ? 'Unknown parts: ' + c.missing.join(', ') : '' }), h('td', { class: 'num', text: String(c.parts) }),
             h('td', { class: 'num', text: c.mass.toFixed(1) + ' t' }), h('td', { class: 'num', text: money(c.cost) }), h('td', { class: 'num', text: Math.round(c.dv) + ' m/s' }),
-            h('td', { class: 'num', text: Math.round(c.dvAsl) + ' m/s' }), h('td', { class: 'num', text: money(c.recover) }),
+            h('td', { class: 'num', text: Math.round(c.dvAsl) + ' m/s', title: c.dvAir ? 'With the air-breathing mode of its multi-mode engines (R.A.P.I.E.R. or Panther) the same rocket gives ' + Math.round(c.dvAir) + ' m/s; the closed-cycle or first mode is used for the other columns.' : '' }), h('td', { class: 'num', text: money(c.recover) }),
             h('td', {}, h('button', { class: 'btn small ghost danger', type: 'button', 'aria-label': 'Remove ' + c.name, onclick: () => { m.crafts = m.crafts.filter((x) => x !== c); m.list.forEach((x) => { if (x.craft === c.id) x.craft = null; }); changed(); } }, '×'))))))) : null);
     }
 
@@ -226,6 +241,11 @@
         const padLimit = (CD.facilities.LaunchPad.massLimit || [])[lvl('LaunchPad') - 1];
         const isPlane = /SPH/i.test(craft.type);
         const partLimit = ((CD.facilities[isPlane ? 'SpaceplaneHangar' : 'VehicleAssemblyBuilding'] || {}).partLimit || [])[lvl(isPlane ? 'SpaceplaneHangar' : 'VehicleAssemblyBuilding') - 1];
+        const site = isPlane ? 'Runway' : 'LaunchPad', siteName = isPlane ? 'Runway' : 'Launch Pad';
+        const lim = Career.CRAFT_LIMITS.size[Math.max(0, Math.min(2, lvl(site) - 1))];
+        if (craft.size && craft.size.length >= 3) checks.push([Career.fitsSize(craft.size, lvl(site)), 'Size ' + craft.size.map((x) => x.toFixed(1)).join(' × ') + ' m, the ' + siteName + ' (level ' + lvl(site) + ') allows ' + (lim ? lim.join(' × ') + ' m' : 'any size'), Career.fitsSize(craft.size, lvl(site)) ? null : { id: site }]);
+        const runwayLimit = Career.CRAFT_LIMITS.mass[Math.max(0, Math.min(2, lvl('Runway') - 1))];
+        if (isPlane) checks.push([runwayLimit === null || craft.mass <= runwayLimit, 'Launch mass ' + craft.mass.toFixed(1) + ' t, the Runway (level ' + lvl('Runway') + ') allows ' + (runwayLimit === null ? 'any mass' : runwayLimit + ' t'), runwayLimit !== null && craft.mass > runwayLimit ? { id: 'Runway' } : null]);
         if (!isPlane && padLimit !== null && padLimit !== undefined) checks.push([craft.mass <= padLimit, 'Launch mass ' + craft.mass.toFixed(1) + ' t, the Launch Pad (level ' + lvl('LaunchPad') + ') allows ' + padLimit + ' t', craft.mass > padLimit ? { id: 'LaunchPad' } : null]);
         else if (!isPlane) checks.push([true, 'Launch mass ' + craft.mass.toFixed(1) + ' t, no limit at this Launch Pad level', null]);
         if (partLimit !== null && partLimit !== undefined) checks.push([craft.parts <= partLimit, craft.parts + ' parts, the ' + (isPlane ? 'Spaceplane Hangar' : 'Vehicle Assembly Building') + ' (level ' + lvl(isPlane ? 'SpaceplaneHangar' : 'VehicleAssemblyBuilding') + ') allows ' + partLimit, craft.parts > partLimit ? { id: isPlane ? 'SpaceplaneHangar' : 'VehicleAssemblyBuilding' } : null]);
@@ -266,8 +286,10 @@
       });
       const typeSel = select([['', 'Estimate a contract…']].concat(Object.keys(CD.contracts).filter((k) => CD.contracts[k].funds.reward > 0).map((k) => [k, k.replace(/([a-z])([A-Z])/g, '$1 $2')])), '', (v) => {
         if (!v) return;
-        const e = Career.contractEstimate(cs, v, 'trivial');
-        mission.contracts.push({ label: v, advance: e.advance, reward: e.reward, sci: e.sci, rep: e.rep });
+        const legs = mission.legs || [], last = legs.slice().reverse().find((l) => l.type === 'transfer' || l.type === 'land' || l.type === 'ascent');
+        const dest = last ? (last.type === 'transfer' ? last.to : last.body) : null;
+        const e = Career.contractEstimate(cs, v, 'trivial', dest);
+        mission.contracts.push({ label: v + (dest && dest !== 'Kerbin' ? ' (' + dest + ')' : ''), advance: e.advance, reward: e.reward, sci: e.sci, rep: e.rep });
         changed();
       }, 'Contract type');
       const savedSel = cs.contracts.length ? select([['', 'Use one from the save…']].concat(cs.contracts.map((x, i) => [String(i), x.type + (x.body ? ' ' + x.body : '') + ' (' + money(x.reward) + ')'])), '', (v) => {

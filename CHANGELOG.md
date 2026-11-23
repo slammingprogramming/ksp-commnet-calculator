@@ -2,6 +2,36 @@
 
 All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.7.0] - 2026-11-23
+
+### Added
+- **Energy:** the game's own rule for sunlight through an atmosphere (read from the code) replaces the fixed factor; panels lose output when hot and gain when cold
+  (the game's temperature curve, with a plate estimate of the temperature); the charge that probe cores and pods already carry counts against batteries;
+  electric engines (the ion engine's 8.7 charge/s) join the load list; and a mod's power parts (Near Future Solar and Electrical read correctly) can be imported from
+  their part files: panels, RTGs, reactors, batteries, fuel cells, electric engines and loads.
+- **CommNet:** a planet pack's antenna power multiplier (JNSQ: 4) in the settings, with a JNSQ preset; a relay-enabler flag on a vessel (the game's rule that a
+  vessel with an enabled relay-enabler part relays at its transmit power); and science from transmitting counts the signal strength (the game's transmit curve).
+  A hop in the Link & relay chain shows how often another body blocks the straight line between its two bodies over the next eight years.
+- **Patched conics:** how many years and legs are followed is a setting (25 years and 16 legs by default); a burn can last a number of seconds and is then
+  flown as short pulses, each aimed along the velocity at that moment; Plock and Karen (OPM) circle their common centre and share their period.
+- **Launch windows:** transfers between different planet systems in missions (Kerbin to Laythe, Mun to Duna) with the moon ends priced from the planet window;
+  an **Encounter burn** card finds the single burn from a circular orbit that reaches a moon, as prograde, normal and radial components with the arrival speed.
+- **Missions and career:** ascents from thick atmospheres are simulated (a gravity turn with the body's air curves, at a thrust-to-weight you set) instead of
+  needing a typed loss figure; multi-mode engines (R.A.P.I.E.R., Panther) are flown in their closed-cycle (or first) mode with the air-breathing delta-v shown
+  beside it; mod parts can be imported from their part files so rockets that use them still get a price, a mass and a delta-v; pad and runway size and mass limits
+  are checked (the size comes from the craft file); records (altitude, speed, distance, depth) in their five steps with the rewards; hiring cost by the number of
+  Kerbals; active strategies apply to launch, recovery and contract money; contract rewards use the destination weight; the funds gain multiplier is applied
+  only where the game applies it.
+- **Network plan:** ore on a body and the time to refuel a lander from it (the drill and converter numbers from the game, the engineer's crew bonus, the
+  abundance you enter or the range of the body), launch cost per relay and expected contract income in the funding check, and a local search that
+  nudges each ring's altitude and inclination when the first pick can be bettered.
+- **Landing tab:** seismometer crash speeds in an atmosphere come from a drop through the body's air (light probe and dense slug).
+- **Relay planner:** the coverage map's probe antenna and window length can be chosen.
+- Interface languages: 19 more labels in the five languages.
+
+### Changed
+- **Missions:** the Eve and Duna style `ascent` and `launch` legs no longer ask for a loss figure; they use the simulated gravity turn (a typed figure still wins).
+
 ## [1.6.0] - 2026-11-23
 
 ### Added

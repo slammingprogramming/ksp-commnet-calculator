@@ -53,9 +53,9 @@ For each stage it then:
 3. if it is still short, tries the next **Tracking Station** level (a stronger ground link) and says so with the facility price.
 
 Later stages assume the earlier unlocks are done. The cost line adds the relay hardware (the antennas, plus a plain relay
-bus from the game's probe core, battery and two panels, so a relay is not free) and any unlocks. **Launches are not included**:
-what a rocket costs depends on how you build it, so price the launches on the [Missions](missions.md) tab. Against your funds
-and science the card says what is short.
+bus from the game's probe core, battery and two panels, so a relay is not free) and any unlocks. **Launches count only if you give a price**:
+what a rocket costs depends on how you build it, so type the **launch cost per relay** (the price of a rocket on the [Missions](missions.md) tab) and any
+**expected contract income** (passed through your active strategies like a contract reward). Against your funds and science the card says what is short.
 
 Without a career (or with the box off) every antenna you have switched on counts as available.
 
@@ -73,13 +73,13 @@ Below the plan, pick a body for placement advice:
 * **Base and mine sites:** the flattest ground (from the Landing finder: slopes are regional, not ground level) with several biomes in
   reach, scored by how well each candidate sees the network (a simulation over one rotation of the body, with the plan's relays if
   you have generated one), how low its latitude is, and how many biomes are close. **Add as base** puts it on the list.
-  The game's ore concentration maps are not in the files this app reads, so for a mine use the spot your own scanner found and add it as a mining site.
+  The game's ore map is noise seeded by the save, so it is not reproduced here: the **Refuel from ore** block uses the middle of the body's abundance range (1 to 15% in the stock game; the Sun and Jool have none), or the percentage your scanner shows. A drill digs its efficiency times the abundance in ore per second; the Convert-O-Tron eats a fixed rate; both run at 5% without an engineer on board and gain 20 points per star (all read from the game's code). The result is how long the drills and the converter need to make the ascent propellant.
 
 ## Where to earn it
 
 *Work out where to earn science* ranks the bodies by the first-time science of landing there against the delta-v of arriving,
 landing and getting back to orbit (two-body, from a 100 km Kerbin orbit, using the Missions tab's legs and real transfer windows).
-Thick atmospheres have no default ascent allowance, so those trips are priced down only and listed after the complete ones.
+Thick atmospheres use the simulated gravity turn for the ascent (see the Missions tab) at a thrust-to-weight of 1.5; a trip where that finds no way up is priced down only and listed after the complete ones.
 Funds come from contracts, the World First milestones and recovery: the [Career](career.md) tab has those.
 
 ## Limits to know

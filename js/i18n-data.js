@@ -293,6 +293,26 @@
     ['Battery', 'Batería', 'Batterie', 'Batterie', 'Bateria', 'バッテリー'],
     ['Sunlight', 'Luz solar', 'Sonnenlicht', 'Lumière solaire', 'Luz solar', '日光'],
     ['Where', 'Dónde', 'Wo', 'Où', 'Onde', '場所'],
+    // added with the gap-closing batch
+    ['Refuel from ore', 'Reabastecer con mineral', 'Aus Erz auftanken', 'Ravitailler à partir du minerai', 'Reabastecer com minério', '鉱石から燃料補給'],
+    ['Drill', 'Taladro', 'Bohrer', 'Foreuse', 'Broca', 'ドリル'],
+    ['How many', 'Cuántos', 'Wie viele', 'Combien', 'Quantos', '台数'],
+    ['Converter', 'Convertidor', 'Konverter', 'Convertisseur', 'Conversor', '変換器'],
+    ['Engineer on board', 'Ingeniero a bordo', 'Ingenieur an Bord', 'Ingénieur à bord', 'Engenheiro a bordo', '搭乗エンジニア'],
+    ['Ore at the site (%)', 'Mineral en el sitio (%)', 'Erz am Standort (%)', 'Minerai sur le site (%)', 'Minério no local (%)', '現地の鉱石量 (%)'],
+    ['Encounter burn', 'Impulso de encuentro', 'Begegnungsmanöver', 'Poussée de rencontre', 'Queima de encontro', '遭遇バーン'],
+    ['Find the burn', 'Buscar el impulso', 'Manöver suchen', 'Trouver la poussée', 'Encontrar a queima', 'バーンを探す'],
+    ['Moon to reach', 'Luna a alcanzar', 'Zielmond', 'Lune à atteindre', 'Lua a alcançar', '到達する衛星'],
+    ['Capture altitude', 'Altitud de captura', 'Einfanghöhe', 'Altitude de capture', 'Altitude de captura', '捕獲高度'],
+    ['Search days', 'Días de búsqueda', 'Suchtage', 'Jours de recherche', 'Dias de busca', '検索日数'],
+    ['Orbiting', 'En órbita de', 'Umkreist', 'En orbite autour de', 'Orbitando', '周回中の天体'],
+    ['Line blocked', 'Línea bloqueada', 'Sichtlinie blockiert', 'Ligne bloquée', 'Linha bloqueada', '視線の遮蔽'],
+    ['Hiring Kerbals', 'Contratar kerbals', 'Kerbals anheuern', 'Recruter des Kerbals', 'Contratar kerbals', 'ケルバルの雇用'],
+    ['Active Kerbals', 'Kerbals activos', 'Aktive Kerbals', 'Kerbals actifs', 'Kerbals ativos', '現役のケルバル'],
+    ['Launch cost per relay (funds)', 'Coste de lanzamiento por relé (fondos)', 'Startkosten je Relais (Geld)', 'Coût de lancement par relais (fonds)', 'Custo de lançamento por retransmissor (fundos)', '中継機1機あたりの打ち上げ費用（資金）'],
+    ['Expected contract income (funds)', 'Ingresos esperados por contratos (fondos)', 'Erwartete Vertragseinnahmen (Geld)', 'Revenus attendus des contrats (fonds)', 'Receita esperada de contratos (fundos)', '契約による想定収入（資金）'],
+    ['Expected science income', 'Ciencia esperada', 'Erwartete Wissenschaft', 'Science attendue', 'Ciência esperada', '想定サイエンス収入'],
+    ['Import mod parts (.cfg)…', 'Importar piezas de mods (.cfg)…', 'Mod-Teile importieren (.cfg)…', 'Importer des pièces de mod (.cfg)…', 'Importar peças de mods (.cfg)…', 'Modパーツをインポート (.cfg)…'],
   ];
   return { languages: languages, rows: rows };
 });
