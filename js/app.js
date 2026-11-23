@@ -103,6 +103,8 @@
     if (!extra || typeof extra !== 'object' || Array.isArray(base)) return extra === undefined ? base : extra;
     const out = Array.isArray(base) ? base : Object.assign({}, base);
     for (const k of Object.keys(extra)) {
+      // Saved state is untrusted JSON: never let these keys reach the prototype chain.
+      if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
       out[k] = base && typeof base[k] === 'object' && base[k] !== null && !Array.isArray(base[k]) ? mergeDeep(base[k], extra[k]) : extra[k];
     }
     return out;

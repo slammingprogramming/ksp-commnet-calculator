@@ -21,7 +21,9 @@ test('the source repository URL is the same in the app, footer, package.json and
   const pkg = JSON.parse(read('package.json'));
   assert.equal(pkg.repository.url, 'git+' + REPO + '.git');
   assert.equal(pkg.bugs.url, REPO + '/issues');
-  assert.ok(read('README.md').includes(PAGES), 'README Pages link');
+  // Compare whole URLs, not substrings, so a longer or lookalike address cannot satisfy the check.
+  const readmeUrls = read('README.md').match(/https?:\/\/[^\s)>"'\]]+/g) || [];
+  assert.ok(readmeUrls.includes(PAGES), 'README Pages link');
 });
 
 test('the licence notice names the copyright holder and the licence is AGPL-3.0-or-later', () => {
