@@ -2,6 +2,20 @@
 
 All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-11-23
+
+### Added
+- **Energy tab:** the sunlight a vessel or base really gets over the planet's year (distance to the star, eclipses by planets and moons, night on
+  the ground, a polar orbit's seasons), and what carries your loads: solar panels, RTGs or fuel cells plus the batteries for the longest darkness and
+  any burst, lightest first, with mass, price and what to unlock for your career. The Network plan tab shows the same power line for each planned
+  relay group.
+- **Interface languages:** Spanish, German, French, Brazilian Portuguese and Japanese for the tab names, settings, buttons, labels and table headers
+  (about 260 texts). The translations are machine-made and unreviewed; long explanations stay English. See `docs/translations.md`.
+- **JNSQ check:** `scripts/check-planet-pack.js` runs a real planet pack (JNSQ by default) through the importer, the world and the planner; the monthly
+  workflow runs it. The importer now reads Kopernicus `displayName`s, recognises gas giants made from the Jool, Sarnus, Urlum and Neidon templates,
+  and the Network plan tab no longer plans landers on them. The Reentry tab says it always uses the stock bodies and atmospheres.
+  JNSQ's own CommNet patch (antenna power x4, DSN modifier 4 recommended) is documented but not applied automatically.
+
 ## [1.5.0] - 2026-11-23
 
 ### Added

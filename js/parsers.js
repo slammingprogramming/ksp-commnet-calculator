@@ -124,6 +124,7 @@
     return v ? v[1] : undefined;
   };
   const kchild = (node, name) => node.children.find((c) => stripOp(c.name) === name);
+  const GAS_TEMPLATES = ['Jool', 'Sarnus', 'Urlum', 'Neidon'];   // same list as Data.GAS_GIANTS (this file has no dependencies)
   const KSP_G0 = 9.80665; // GM = geeASL * 9.80665 * r^2 (exact for every stock body in the game's own data)
   const BIG_G = 6.6743e-11;
 
@@ -172,6 +173,9 @@
           }
           const rot0 = num(kget(props, 'initialRotation'));
           if (rot0 !== undefined) f.rot0 = rot0;
+          // packs name a body for the game's own use ("Jool2") and show another name ("Jool^N"); localisation keys (#LOC_...) are no name
+          const disp = kget(props, 'displayName');
+          if (disp !== undefined) { const d = String(disp).replace(/\^\w$/, '').trim(); if (d && d[0] !== '#') f.display = d; }
           const soi = num(kget(props, 'sphereOfInfluence'));
           if (soi !== undefined) f.soi = soi;
         }
@@ -197,13 +201,14 @@
         if (!orbitNode && (name === 'Sun' || name === 'Kerbol')) { out.patches.push({ id: 'Kerbol', fields: f }); continue; }
         // new body: fill gaps from the template
         const def = {
-          id: name, name: (kget(b, 'cbNameLater') || name), parent: f.parent || null, pack: 'custom',
+          id: name, name: (kget(b, 'cbNameLater') || f.display || name), parent: f.parent || null, pack: 'custom',
           radius: f.radius !== undefined ? f.radius : tpl ? tpl.radius : undefined,
           gm: f.gm, atmo: f.atmo !== undefined ? f.atmo : tpl ? tpl.atmo : 0,
           rot: f.rot !== undefined ? f.rot : tpl ? tpl.rot : undefined,
           rot0: f.rot0 || 0, soi: f.soi || null, star: false, opm: null, subParentLon: null,
           orbit: f.orbit ? Object.assign({ a: 0, e: 0, i: 0, lan: 0, w: 0, m0: 0, epoch: 0 }, f.orbit) : null,
         };
+        if (tpl && GAS_TEMPLATES.indexOf(tpl.id) >= 0) def.gas = true;           // built on a gas giant: nothing to land on
         if (def.gm === undefined) def.gm = f.geeASL !== undefined && def.radius ? f.geeASL * KSP_G0 * def.radius * def.radius : tpl ? tpl.gm : undefined;
         const missing = [];
         if (!(def.radius > 0)) missing.push('radius');

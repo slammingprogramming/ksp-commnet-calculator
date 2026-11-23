@@ -28,7 +28,7 @@
       return {
         id: d.id, name: d.name, pack: d.pack, radius: d.radius, gm: d.gm, atmo: d.atmo || 0, star: !!d.star,
         parent: useOpm ? d.opm.parent : d.parent, rot: useOpm && d.opm.rot ? d.opm.rot : d.rot,
-        orbit: useOpm ? d.opm.orbit : d.orbit, soi: d.soi || null, rot0: d.rot0 == null ? null : d.rot0, subParentLon: d.subParentLon,
+        orbit: useOpm ? d.opm.orbit : d.orbit, soi: d.soi || null, rot0: d.rot0 == null ? null : d.rot0, subParentLon: d.subParentLon, gas: !!d.gas,
       };
     });
     const byId = new Map(resolved.map((b) => [b.id, b]));

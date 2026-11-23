@@ -20,3 +20,13 @@ jobs:
         with:
           node-version: 20
       - run: node scripts/check-mod-data.js
+
+  # The importer and the planner against a real planet pack (JNSQ, which rescales the whole system): see scripts/check-planet-pack.js
+  planet-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - run: node scripts/check-planet-pack.js

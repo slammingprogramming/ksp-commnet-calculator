@@ -483,7 +483,8 @@
   /* ---------- line-of-sight survey for the Reach tab ---------- */
 
   /** Bodies with no surface to land on (stock + Outer Planets). Unknown bodies from planet packs count as solid. */
-  const GAS_GIANTS = new Set(['Jool', 'Sarnus', 'Urlum', 'Neidon']);
+  const GAS_GIANTS = new Set(Data.GAS_GIANTS);
+  const isGas = (b) => !!b && (GAS_GIANTS.has(b.id) || !!b.gas);
 
   /**
    * For each body: how much of the time can a lander (8 spread-out sites) with `power` reach the DSN directly, counting
@@ -497,7 +498,7 @@
     let done = 0;
     for (const id of bodyIds) {
       const b = world.index.get(id);
-      if (b && !b.star && !GAS_GIANTS.has(id)) {
+      if (b && !b.star && !isGas(b)) {
         const nodes = sites.map((p, i) => ({
           id: 'site:' + i, name: 'site ' + i, tracked: true, loc: { type: 'landed', body: id, lat: p.lat, lon: p.lon, alt: 0 },
           antennas: [], powerOverride: { own: P.power, relay: P.power },
@@ -549,6 +550,6 @@
 
   return {
     surfaceSamples: surfaceSamples, relayTiers: relayTiers, causeTable: causeTable, keoAltitude: keoAltitude,
-    planGen: planGen, runSync: runSync, coverageGen: coverageGen, reachGen: reachGen, GAS_GIANTS: GAS_GIANTS, deployHint: deployHint, deployText: deployText, evaluateGen: evaluateGen, runScan: runScan, ringNodes: ringNodes,
+    planGen: planGen, runSync: runSync, coverageGen: coverageGen, reachGen: reachGen, GAS_GIANTS: GAS_GIANTS, isGas: isGas, deployHint: deployHint, deployText: deployText, evaluateGen: evaluateGen, runScan: runScan, ringNodes: ringNodes,
   };
 });

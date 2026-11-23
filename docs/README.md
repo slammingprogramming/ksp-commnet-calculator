@@ -16,12 +16,14 @@ career saves.
 | [Relay planner](planner.md) | have the fixes designed, checked and stress-tested for you, within a budget if you like |
 | [Network planner](network.md) | see who can reach whom over time, find single points of failure, compare ground-station sets (Making History included) |
 | [Network plan](netplan.md) | list your stations, labs, bases, mines, rovers and aircraft; get a staged relay network that fits what your career has unlocked, with placement advice and what it costs |
+| [Energy planning](energy.md) | find the sunlight a vessel or base gets over the year (distance, eclipses, night) and the solar panels, RTGs, fuel cells and batteries that carry its loads |
 | [Reentry and plasma blackout](reentry.md) | find when and where a landing loses signal, and how fast you can come in without losing it |
 | [Launch windows and manoeuvres](launch-windows.md) | find when to leave for another planet or moon and put the burn on a vessel |
 | [Career](career.md) | plan money, science and reputation over time, facility upgrades and the tech tree from your save |
 | [Missions](missions.md) | import rockets, build a route, and check delta-v, facilities, research and cost |
 | [Landing](landing.md) | find landing sites by tilt, latitude, height and biome; science and Breaking Ground planning for a site |
 | [Game settings and mods](settings-and-mods.md) | set difficulty and the Tracking Station, enable antenna packs, import mod antennas and planet packs |
+| [Translations](translations.md) | use the interface in Spanish, German, French, Portuguese or Japanese; what is translated; how to correct or add a language |
 | [FAQ and troubleshooting](faq.md) | fix "the calculator says it works but the game disagrees" and similar |
 
 ## How it works

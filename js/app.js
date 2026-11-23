@@ -97,6 +97,8 @@
       landing: { body: 'Mun', landTilt: 10, stayTilt: 5, share: 0.5, maxLat: 90, minAlt: null, maxAlt: null, dry: true, biomes: [], avoid: [], near: null, nearKm: 500, varietyKm: 100, rank: 'flat', pick: null, open: {},
         deploy: { counts: {}, level: 0, power: 1, engineer: 0, dish: 0, gain: null, impact: { mass: 5, speed: 550, km: null, done: 0 } } },
       netplan: { sites: [], nextId: 1, mode: 'stages', horizon: 1, target: 99.5, minSignal: 20, useCareer: true, lastBody: 'Mun', place: { body: 'Mun', isp: 345, dry: 5, maxLat: 90 } },
+      energy: { where: 'orbit', body: 'Mun', alt: 80000, inc: 0, lat: 0, lon: 0, orientation: 50, atmosphere: 100, margin: 15, burstMin: 0, days: 30, useCareer: true, allowUnlock: false,
+        loads: [{ pre: 'core:probeCoreOcto2_v2', label: 'Probodobodyne OKTO2 (control)', n: 1, ec: 0.03, duty: 100 }, { pre: 'wheel:sasModule', label: 'Small Inline Reaction Wheel (turning)', n: 1, ec: 0.25, duty: 10 }] },
       saveInfo: null,
       ui: { tab: 'chain' },
     };

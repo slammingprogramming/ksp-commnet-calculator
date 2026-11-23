@@ -183,8 +183,12 @@ reachability matrix and the difficulty modifiers; the implementation and data ar
   the Reentry tab models it for landings), orbital perturbations (the game has none), mods' own signal multipliers (not
   looked for in other mods' code). The entry model ignores lift and the sun/latitude temperature bias of the air.
 * Planet packs: the importer was run against the real Real Solar System configs (all bodies import; Earth-sized
-  keostationary height 35 793 km; planner, tracker and network work). JNSQ was not tested (its repository could not be
-  cloned in the session); it uses the same Kopernicus syntax.
+  keostationary height 35 793 km; planner, tracker and network work). JNSQ was run later (2026-11-23, `node scripts/check-planet-pack.js`):
+  31 bodies and one patch import with no warnings, the calendar follows its 12-hour home day (43 320 s, 364-day year), two gas giants are recognised
+  (Jool, Lindor), and the planner brings a far-side lander on the home world's first moon from 64% to 100% with two relays. It needed a `displayName`
+  reader (the internal name differs from the shown one), a gas-giant flag from the Jool/Sarnus/Urlum/Neidon templates and a gap filler for
+  template-defined bodies. The monthly workflow repeats the run; no pack file is stored in this repository. JNSQ's `AntennaRange.cfg` patch multiplies every part's
+  `antennaPower` by 4 (and its upgrades) and recommends DSN modifier 4 and range modifier 1; this is not applied automatically (see settings-and-mods).
 * Vessels opted in to *patched conics* follow SOI exits and encounters on a fixed conic (`js/trajectory.js`, at most
   8 legs over 25 years, no burns). Others stay on one conic about their body. Kopernicus binaries (Plock-Karen) are
   simplified.
@@ -320,3 +324,19 @@ biomes and its frequency. How it is paid (read from `Expansions.Serenity.Deploye
   every character; both are fixed and tested.
 
 **Not read:** kerbal hiring cost curve details, the interval records, the Space Center biomes, and the noise the terrain generator adds.
+
+## 9. Energy (read from the game, 2026-11-23)
+
+* **Solar panels** (`ModuleDeployableSolarPanel`, IL of `ModuleDeployableSolarPanel.PostCalculateTracking` and the flux code): output =
+  `chargeRate × (solarFlux / SolarLuminosityAtHome) × sunAOA × temperature/time efficiency × efficiencyMult`. `solarFlux` is the star's luminosity over
+  4π d², so against the home flux it is `(a_home / d)²`. Tracking panels use an angle factor of 1 while lit; fixed panels use the cosine of the angle
+  between the panel and the sun. The atmosphere's own factor (`CelestialBody.GetSolarAtmosphericEffects`) is not modelled; the Energy tab takes it as a
+  setting. The sun is hidden when a body's sphere is between the vessel and the star.
+* **Part numbers** come from the part configs (`node scripts/build-energy-data.js`): 11 solar panels (charge rate and whether they track), the RTG
+  (0.75 charge per second, no fuel), the fuel cells (the Fuel Cell: 1.5 charge per second from liquid fuel 0.0016875 and oxidizer 0.0020625 per second; the
+  Fuel Cell Array: 18 from 0.02025 and 0.02475), 7 batteries (capacity in charge units), probe cores and reaction wheels (the `ElectricCharge` rate), 2 drills (3 and 15 per
+  second), 2 converters (the Convert-O-Tron and the mini ISRU each draw 30), radiators and rover wheel motors. Titles, prices, masses and tech nodes are read from the career data.
+* Antennas draw `packetCost / packetInterval` only while they transmit; relaying draws nothing.
+* **Eclipses and night** are computed, not assumed: the module samples real positions over the planet's year (8 epochs) and two cycles of the orbit
+  or solar day. The share in sunlight in a 100 km Kerbin orbit is about 2/3, and the longest darkness about 650 s, as the geometry says.
+* **Not read:** panel heating curves, how the game dims light through an atmosphere, ion-engine consumption per throttle, and mods' own power parts.

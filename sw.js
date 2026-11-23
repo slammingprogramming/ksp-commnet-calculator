@@ -2,13 +2,13 @@
 /* Offline support: keeps the app's own files in a cache so the workbench opens without a connection. It never contacts any
  * other site. VERSION must equal package.json's version (a test checks it); a new release gets a new cache and drops the old one. */
 'use strict';
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const CACHE = 'kspcn-' + VERSION;
 const FILES = [
   './', 'index.html', 'css/app.css', 'icon.svg', 'manifest.webmanifest',
   'js/data.js', 'js/orbits.js', 'js/core.js', 'js/world.js', 'js/trajectory.js', 'js/sim.js', 'js/network.js', 'js/planner.js',
-  'js/reentry.js', 'js/transfer.js', 'js/parsers.js', 'js/share.js', 'js/career-data.js', 'js/craft.js', 'js/career.js', 'js/terrain-data.js', 'js/landing.js', 'js/mission.js', 'js/netplan.js', 'js/app.js', 'js/ui-scenario.js', 'js/ui-tracker.js',
-  'js/ui-planner.js', 'js/ui-network.js', 'js/ui-reentry.js', 'js/ui-transfer.js', 'js/ui-career.js', 'js/ui-missions.js', 'js/ui-landing.js', 'js/ui-netplan.js', 'js/main.js',
+  'js/reentry.js', 'js/transfer.js', 'js/parsers.js', 'js/share.js', 'js/career-data.js', 'js/craft.js', 'js/career.js', 'js/terrain-data.js', 'js/landing.js', 'js/mission.js', 'js/energy-data.js', 'js/energy.js', 'js/netplan.js', 'js/app.js', 'js/ui-scenario.js', 'js/ui-tracker.js',
+  'js/ui-planner.js', 'js/ui-network.js', 'js/ui-reentry.js', 'js/ui-transfer.js', 'js/ui-career.js', 'js/ui-missions.js', 'js/ui-landing.js', 'js/ui-netplan.js', 'js/ui-energy.js', 'js/i18n-data.js', 'js/i18n.js', 'js/main.js',
 ];
 
 self.addEventListener('install', (event) => {

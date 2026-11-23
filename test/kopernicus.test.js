@@ -262,3 +262,91 @@ test('a pack body with a stock id but no Kerbin only replaces that body', () => 
   assert.ok(w.index.has('Mun') && w.index.has('Eve'));
   near(w.index.get('Duna').radius, 6371000);
 });
+
+// Written for this test in the shape JNSQ uses: an internal name that differs from the name the game shows, a localisation key as a
+// display name, a body built on a gas giant, a rescaled home world and a 12-hour day.
+const RESCALED = `
+@Kopernicus:FOR[Rescaled]
+{
+	Body
+	{
+		name = Kerbin
+		Template
+		{
+			name = Kerbin
+		}
+		Properties
+		{
+			displayName = Kerbin^N
+			radius = 1600000
+			geeASL = 1
+			rotationPeriod = 43200
+			isHomeWorld = True
+		}
+		Orbit
+		{
+			referenceBody = Sun
+			semiMajorAxis = 37525647898
+			eccentricity = 0.02
+		}
+	}
+	Body
+	{
+		name = Giant2
+		Template
+		{
+			name = Jool
+		}
+		Properties
+		{
+			displayName = Giant^N
+			radius = 14000000
+			geeASL = 1.04
+			rotationPeriod = 90000
+		}
+		Orbit
+		{
+			referenceBody = Sun
+			semiMajorAxis = 189800000000
+			eccentricity = 0.05
+		}
+	}
+	Body
+	{
+		name = Rock
+		Template
+		{
+			name = Moho
+		}
+		Properties
+		{
+			displayName = #LOC_PACK_Rock
+			radius = 600000
+			geeASL = 0.5
+			rotationPeriod = 20000
+		}
+		Orbit
+		{
+			referenceBody = Sun
+			semiMajorAxis = 94100000000
+			eccentricity = 0.1
+		}
+	}
+}`;
+
+test('planet pack with a rescaled home world: display names, gas giants and the calendar', () => {
+  const r = P.parseKopernicus(RESCALED, stock);
+  assert.deepEqual(r.warnings, []);
+  const by = (id) => r.bodies.find((b) => b.id === id);
+  assert.equal(by('Giant2').name, 'Giant', 'the name the game shows, not the internal one');
+  assert.equal(by('Kerbin').name, 'Kerbin', 'the ^N marker is removed');
+  assert.equal(by('Rock').name, 'Rock', 'a localisation key is no name');
+  assert.equal(by('Giant2').gas, true, 'built on Jool: nothing to land on');
+  assert.ok(!by('Rock').gas && !by('Kerbin').gas);
+  const w = createWorld({ extraBodies: r.bodies, patches: r.patches });
+  assert.equal(w.index.get('Giant2').gas, true);
+  assert.equal(w.bodies.filter((b) => !b.star).length, 3, 'the pack replaces the stock system');
+  near(w.index.get('Kerbin').radius, 1600000);
+  assert.ok(Math.abs(w.calendar.day - 43200) / 43200 < 0.02, 'a 12-hour home day');
+  assert.ok(require('../js/planner.js').isGas(w.index.get('Giant2')));
+});

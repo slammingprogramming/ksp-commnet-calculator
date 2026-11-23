@@ -54,7 +54,7 @@ async function main() {
     await page.goto(base);
     await page.waitForSelector('#tabs button');
     const tabs = await page.$$eval('#tabs button', (bs) => bs.map((b) => b.id));
-    assert.deepEqual(tabs, ['tabbtn-chain', 'tabbtn-finder', 'tabbtn-reach', 'tabbtn-scenario', 'tabbtn-tracker', 'tabbtn-planner', 'tabbtn-netplan', 'tabbtn-network', 'tabbtn-reentry', 'tabbtn-transfer', 'tabbtn-career', 'tabbtn-missions', 'tabbtn-landing', 'tabbtn-antennas', 'tabbtn-help']);
+    assert.deepEqual(tabs, ['tabbtn-chain', 'tabbtn-finder', 'tabbtn-reach', 'tabbtn-scenario', 'tabbtn-tracker', 'tabbtn-planner', 'tabbtn-netplan', 'tabbtn-energy', 'tabbtn-network', 'tabbtn-reentry', 'tabbtn-transfer', 'tabbtn-career', 'tabbtn-missions', 'tabbtn-landing', 'tabbtn-antennas', 'tabbtn-help']);
     for (const id of tabs) {
       await page.click('#' + id);
       const panel = '#tab-' + id.replace('tabbtn-', '');
@@ -239,6 +239,20 @@ async function main() {
     await page.waitForSelector('#tab-netplan button:has-text("Add as base")', { timeout: 60000 });
     step('network plan');
 
+    // Energy: sunlight and a table of what covers the loads; moving to a far planet changes the answer
+    await page.click('#tabbtn-energy');
+    await page.waitForSelector('#tab-energy >> text=What covers it', { timeout: 30000 });
+    assert.match(await page.innerText('#tab-energy'), /Sunlight at Mun/);
+    // an earlier step loaded a career, so only its unlocked parts count; ask for the rest too
+    await page.check('#tab-energy input[aria-label="also parts I have to unlock"]');
+    await page.waitForSelector('#tab-energy table tbody tr', { timeout: 30000 });
+    await page.selectOption('#tab-energy select[aria-label="Where"]', 'space');
+    await page.selectOption('#tab-energy select[aria-label="Body"]', 'Eeloo');
+    await page.waitForSelector('#tab-energy >> text=Sunlight about Eeloo', { timeout: 30000 });
+    assert.match(await page.innerText('#tab-energy'), /RTG/);
+    assert.ok(!/\bnull\b|\bundefined\b|NaN/.test(await page.innerText('#tab-energy')), 'energy shows no null/undefined/NaN');
+    step('energy planning');
+
     // Planner budget fields are there and keep their value
     await page.click('#tabbtn-planner');
     await page.fill('#tab-planner input[aria-label="Most relays"]', '2');
@@ -262,6 +276,25 @@ async function main() {
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('button:has-text("Export file")')]);
     assert.equal(download.suggestedFilename(), 'ksp-commnet-scenario.json');
     step('export file');
+
+    // Interface language: the picker reloads the page in Spanish, the choice is remembered, and English comes back
+    await page.selectOption('#lang', 'es');
+    await page.waitForLoadState('load');
+    await page.waitForSelector('#tabbtn-scenario');
+    assert.equal((await page.innerText('#tabbtn-scenario')).trim(), 'Escenario');
+    assert.equal(await page.getAttribute('html', 'lang'), 'es');
+    await page.click('#tabbtn-planner');
+    await page.waitForSelector('#tab-planner >> text=Diseñar una solución', { timeout: 30000 });
+    assert.match(await page.innerText('#settings'), /Ajustes del juego/);
+    assert.ok(!/\bnull\b|\bundefined\b|NaN/.test(await page.innerText('#tab-planner')), 'translated tab shows no null/undefined/NaN');
+    await page.reload();
+    await page.waitForSelector('#tabbtn-scenario');
+    assert.equal((await page.innerText('#tabbtn-scenario')).trim(), 'Escenario', 'the language is remembered');
+    await page.selectOption('#lang', 'en');
+    await page.waitForLoadState('load');
+    await page.waitForSelector('#tabbtn-scenario');
+    assert.equal((await page.innerText('#tabbtn-scenario')).trim(), 'Scenario');
+    step('interface language');
   } finally {
     await browser.close();
     server.kill();

@@ -33,12 +33,14 @@ outside the project.
 | `js/terrain-data.js`, `js/landing.js` | generated: a coarse grid per body (biome, height, slope percentiles) from the game's maps (`node scripts/build-terrain-data.js <folder>`, input from `unityscan.py --terrain=<folder>`); the landing-site finder |
 | `js/career-data.js` | generated: the tech tree, part list, science and contract tables, facility rules (`node scripts/build-career-data.js`; numbers only) |
 | `js/netplan.js`, `js/ui-netplan.js` | the network generator: sites to nodes, antennas the career has, staged runs of the relay planner, unlock costs, station/base/lander advice, earning table |
+| `js/energy.js`, `js/energy-data.js`, `js/ui-energy.js` | energy planning: sunlight over the planet's year (distance, eclipses, night), loads, solar/RTG/fuel cell/battery sizing; the data file is generated (`node scripts/build-energy-data.js "<KSP folder>"`) |
+| `js/i18n.js`, `js/i18n-data.js` | interface languages: a catalogue of exact English texts and a page walker that swaps them (`docs/translations.md`) |
 | `js/craft.js`, `js/career.js`, `js/mission.js` | rockets (.craft import, price, mass, stage-by-stage delta-v), career state, facilities, tech plan, finance and science, mission legs |
 | `js/share.js` | scenario export and import, share-link validation (all input is untrusted) |
 | `js/parsers.js` | ConfigNode parser, part `.cfg` import, Kopernicus planet-pack import, `persistent.sfs` reader |
 | `js/app.js`, `js/ui-*.js` | the interface: state, settings, the first tabs; Scenario, Tracker, Planner, Network, Reentry, Launch windows, Career, Missions and Landing tabs |
 | `index.html`, `sw.js`, `manifest.webmanifest`, `icon.svg` | the page (with its Content-Security-Policy), and the offline cache and install files |
-| `scripts/` | dev server, mod-data check, screenshot generator, test runner |
+| `scripts/` | dev server, mod-data check, planet-pack check (`check-planet-pack.js`: runs JNSQ or a folder of Kopernicus configs through the importer, world and planner), data builders, screenshot generator, test runner |
 | `tools/ildump`, `tools/unityscan` | small readers used to verify the game's rules and data (see their READMEs for the legal note) |
 | `test/` | unit tests per module, plus `test/smoke/` for the browser smoke test |
 

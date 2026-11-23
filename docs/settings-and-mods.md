@@ -76,6 +76,16 @@ real year. Menu-manager filters (`@Body:HAS[…]`) are ignored. The app has been
 configs: all bodies import and the planner, tracker and network tabs work on an Earth-sized system, including the
 keostationary relay height.
 
+A pack that **rescales the home world** is handled too: JNSQ imports with no warnings, the
+calendar follows the home world's day, a body's `displayName` (with its `^N` gender mark) becomes its name, and gas giants defined from the Jool,
+Sarnus, Urlum or Neidon templates are recognised so that landers are not planned on them. `node scripts/check-planet-pack.js` runs the real JNSQ
+configs (a shallow clone of its public repository, nothing copied into this repository) through the importer, the world, the planner and the
+simulator; the monthly workflow does the same. The Reentry tab always uses the stock bodies and atmospheres, even with a pack loaded.
+
+JNSQ also changes **CommNet itself**: its config patches every antenna's `antennaPower` to four times the stock value, and its notes recommend a
+DSN modifier of 4 and a range modifier of 1 at its quarter-real scale. The workbench does not apply that patch for you. Use the Game settings
+difficulty fields (range and DSN modifiers) or a custom antenna to match what your game does.
+
 ### Near Future reflectors
 
 With the Near Future Exploration pack on, an antenna entry that has a feed gets a **reflector** picker. Choose the

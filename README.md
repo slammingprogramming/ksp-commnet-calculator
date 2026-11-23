@@ -53,9 +53,9 @@ Each tab has a guide with screenshots in the **[documentation](docs/README.md)**
 | [Calculators](docs/calculators.md) | chain, finder and reach map |
 | [Scenarios](docs/scenario.md) | vessels, saves, patched conics, export and share links |
 | [Tracker](docs/tracker.md) · [Relay planner](docs/planner.md) | blackouts and how the fixes are designed |
-| [Network](docs/network.md) · [Network plan](docs/netplan.md) · [Reentry](docs/reentry.md) · [Launch windows](docs/launch-windows.md) | whole-network planning, plasma blackout on landings, transfers and burns |
+| [Network](docs/network.md) · [Network plan](docs/netplan.md) · [Energy](docs/energy.md) · [Reentry](docs/reentry.md) · [Launch windows](docs/launch-windows.md) | whole-network planning, power for vessels and bases, plasma blackout on landings, transfers and burns |
 | [Career](docs/career.md) · [Missions](docs/missions.md) · [Landing](docs/landing.md) | money, research, milestones and facility planning; rockets, delta-v and mission cost; landing sites and science |
-| [Game settings and mods](docs/settings-and-mods.md) | difficulty, antenna packs, mod and planet-pack import |
+| [Game settings and mods](docs/settings-and-mods.md) · [Translations](docs/translations.md) | difficulty, antenna packs, mod and planet-pack import; interface languages |
 | [How the model works](docs/model.md) · [Research notes](docs/RESEARCH.md) | the maths, the game rules, sources and verification |
 | [FAQ](docs/faq.md) · [Development](docs/development.md) | troubleshooting; commands, layout and conventions |
 

@@ -11,6 +11,7 @@
   const Orb = window.KSPOrbits;
   const Net = window.KSPNetPlan;
   const Career = window.KSPCareer;
+  const En = window.KSPEnergy;
   const Scn = window.KSPScenario;
   const h = App.h;
 
@@ -230,6 +231,22 @@
       App.rebuildAll();
     }
 
+    /** One line per relay ring: how much sun its orbit gets and the lightest way to power a bare relay (a probe core and a small wheel). */
+    function relayPower(g) {
+      const cs = careerState();
+      const groups = Array.from(new Set(g.planned.map((n) => n.group)));
+      const loads = [{ label: 'probe core', ec: 0.03, duty: 1 }, { label: 'reaction wheel', ec: 0.25, duty: 0.1 }];
+      const lines = groups.map((id) => {
+        const n = g.planned.find((x) => x.group === id);
+        const prof = En.lightProfile(App.world, { type: 'orbit', body: n.loc.body, orbit: n.loc.orbit }, { t0: st.scenario.ut });
+        const d = En.design({ profile: prof, loads: loads, state: cs, allowUnlock: true });
+        const o = d.options[0];
+        return n.name.replace(/ \d+\/\d+$/, '') + ': ' + (prof.share.min > 0.999 ? 'always in sunlight' : 'in sunlight ' + Math.round(prof.share.min * 100) + '% or more, longest darkness ' + Orb.formatDuration(prof.dark.max)) +
+          (o ? '; lightest power: ' + o.parts.map((p) => p.n + '× ' + En.partOf(p.id).title).join(' + ') + ' (' + fmt(o.mass, 3) + ' t)' + (o.funds || (o.needs && o.needs.length) ? ', needs unlocking' : '') : '');
+      });
+      return h('p', { class: 'hint', text: 'Power for a bare relay (the Energy tab sizes anything bigger): ' + lines.join(' · ') });
+    }
+
     function renderResult() {
       if (!result) { out.replaceChildren(); return; }
       const r = result.res;
@@ -254,6 +271,7 @@
           h('p', { class: 'hint', text: 'Worst site ' + pc(g.worst) + ', mean ' + pc(g.mean) + '. ' + g.planned.length + ' new relay' + (g.planned.length === 1 ? '' : 's') + ', ' + money(g.cost.funds) + ' funds in relay hardware' + (g.funds > g.cost.funds ? ' + ' + money(g.funds - g.cost.funds) + ' to unlock' : '') + '.' }),
           h('table', {}, h('thead', {}, h('tr', {}, ...['Site', 'Kind · body', 'Uptime', 'Goal', 'Result', 'Longest outage'].map((t) => h('th', { text: t })))), h('tbody', {}, ...rows)),
           relayRows.length ? h('table', { style: 'margin-top:8px' }, h('thead', {}, h('tr', {}, ...['New relay', 'Orbit', 'Antennas'].map((t) => h('th', { text: t })))), h('tbody', {}, ...relayRows)) : h('p', { class: 'hint', text: 'No new relays needed for this stage.' }),
+          relayRows.length ? relayPower(g) : null,
           g.upgrade ? h('p', { text: 'To build this stage you need to unlock ' + g.upgrade.antennas.map((id) => (App.lookup(id) || { name: id }).name).join(', ') + ': research ' + g.upgrade.nodes.map((n) => n.title + ' (' + n.cost + ')').join(', ') + ' for ' + money(g.upgrade.science) + ' science, and buy the parts for ' + money(g.upgrade.funds) + ' funds.' }) : null,
           g.dsn ? h('p', { text: 'The goal also needs the Tracking Station at level ' + g.dsn.to + (g.dsn.funds ? ' (' + money(g.dsn.funds) + ' funds)' : '') + ': the stronger ground link carries the far relays.' }) : null,
           !g.ok && g.advice && g.advice.length ? h('p', { class: 'hint', text: 'What the relay planner could not fix: ' + g.advice.filter((a) => a.kind === 'nofix').map((a) => a.cause.id).join(', ') + '. See the Relay planner tab for each cause.' }) : null,

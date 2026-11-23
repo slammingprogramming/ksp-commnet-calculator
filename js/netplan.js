@@ -65,7 +65,7 @@
     const out = [];
     for (const s of sites) {
       const k = KINDS[s.kind], b = world.index.get(s.body);
-      if (!k || !b) continue;
+      if (!k || !b || (k.where !== 'orbit' && Pl.isGas(b))) continue;       // nothing to stand on at a gas giant
       let ants = s.antennas && s.antennas.length ? clone(s.antennas) : loadout(s.kind, pool, rangeMod);
       if (!ants.length && fallback) ants = loadout(s.kind, fallback, rangeMod);          // nothing usable yet: the plan will say what to unlock
       const mask = TERRAIN[s.terrain] || 0;
@@ -158,7 +158,7 @@
   function* planGen(P) {
     const world = P.world, lookup = P.lookup;
     const phase = (t) => { if (P.onPhase) P.onPhase(t); };
-    const sites = (P.sites || []).filter((s) => KINDS[s.kind] && world.index.get(s.body));
+    const sites = (P.sites || []).filter((s) => KINDS[s.kind] && world.index.get(s.body) && (KINDS[s.kind].where === 'orbit' || !Pl.isGas(world.index.get(s.body))));
     if (!sites.length) return { error: 'Add at least one site.', stages: [], totals: null };
     const maxStage = P.mode === 'stages' ? Math.max.apply(null, sites.map((s) => s.stage || 1)) : 1;
     const target = P.target == null ? 0.995 : P.target;

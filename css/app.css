@@ -60,6 +60,8 @@ a { color: var(--accent); }
 
 .top { background: var(--bg2); border-bottom: 1px solid var(--line); }
 .top-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; padding-bottom: 12px; }
+.top-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.top-tools select.lang { width: auto; max-width: 11rem; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand h1 { font-size: 1.25rem; }
 .brand p { margin: 0; color: var(--muted); font-size: 0.85rem; }

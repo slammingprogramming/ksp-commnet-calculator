@@ -57,6 +57,7 @@
       form.replaceChildren(...[
         h('h2', { text: 'Reentry and plasma blackout' }),
         h('p', { class: 'hint', text: 'Plasma around a re-entering vessel blacks out CommNet when the difficulty option Plasma Blackout is on. The rules come from the game’s code; this tab finds when and where they trigger on your entry so you can plan the landing around the silence.' }),
+        h('p', { class: 'hint', text: 'This tab always uses the stock game’s bodies and atmospheres. A planet pack that rescales them (JNSQ, Real Solar System) is not applied here, so its entries need their own atmosphere data.' }),
         h('div', { class: 'row' }, field('Body', bodySel), field('Describe the entry', modeSel)),
         rs.mode === 'orbit'
           ? h('div', { class: 'row' }, field('Periapsis altitude (m)', num('Periapsis altitude in metres', 'pe', 1000), 'inside the atmosphere'), field('Apoapsis altitude (m, or blank for an escape)', num('Apoapsis altitude in metres', 'ap', 100000), 'a negative value means an escape'), field('Escape speed left over (m/s)', num('Speed at infinity in metres per second', 'vinf', 50), 'used when the apoapsis is negative'))

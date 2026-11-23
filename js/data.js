@@ -15,7 +15,7 @@
   'use strict';
 
   const GAME_VERSION = '1.12.5';
-  const APP_VERSION = '1.5.0'; // keep equal to package.json (a test checks it)
+  const APP_VERSION = '1.6.0'; // keep equal to package.json (a test checks it)
 
   const TECH = {
     start: 'Start',
@@ -284,6 +284,9 @@
   /* Atmospheres of the stock bodies, read from the CelestialBody prefabs with tools/unityscan (see docs/RESEARCH.md).
    * temp / pressure are the game's FloatCurves, [altitude m, value, inSlope, outSlope] per key (Hermite): temperature in K,
    * pressure in kPa. molarMass kg/mol, gamma = adiabatic index, shock = shockTemperatureMultiplier, depth = atmosphere height (m). */
+  /** Bodies with no surface to land on (stock + Outer Planets); a pack body built from one of these as its template is one too. */
+  const GAS_GIANTS = ['Jool', 'Sarnus', 'Urlum', 'Neidon'];
+
   const ATMOSPHERES = {
     Kerbin: { depth: 70000, molarMass: 0.0289644, gamma: 1.4, shock: 1,
       temp: [[0, 288.15, 0, -0.008125], [8815.22, 216.65, -0.008097, 0], [16050.4, 216.65, 0, 0.001242], [25729.2, 228.65, 0.001237, 0.003465], [37879.4, 270.65, 0.003449, 0], [41129.2, 270.65, 0, -0.003444], [57440.1, 214.65, -0.003422, -0.002445], [68797.9, 186.946, -0.002434, 0], [70000, 186.946, 0, 0]],
@@ -346,7 +349,7 @@
     BODY_PACKS: BODY_PACKS,
     bodies: bodies,
     STATIONS: STATIONS,
-    ATMOSPHERES: ATMOSPHERES,
+    ATMOSPHERES: ATMOSPHERES, GAS_GIANTS: GAS_GIANTS,
     SUPPORT: SUPPORT,
     G0: G0,
     // Calendar: 6-hour days, 426-day years (stock). setCalendar changes it when a planet pack replaces Kerbin by Earth.
