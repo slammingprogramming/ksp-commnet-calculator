@@ -2,7 +2,7 @@
 /* Offline support: keeps the app's own files in a cache so the workbench opens without a connection. It never contacts any
  * other site. VERSION must equal package.json's version (a test checks it); a new release gets a new cache and drops the old one. */
 'use strict';
-const VERSION = '1.3.1';
+const VERSION = '1.4.0';
 const CACHE = 'kspcn-' + VERSION;
 const FILES = [
   './', 'index.html', 'css/app.css', 'icon.svg', 'manifest.webmanifest',

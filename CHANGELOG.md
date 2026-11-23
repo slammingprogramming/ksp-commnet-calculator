@@ -2,7 +2,7 @@
 
 All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.4.0] - 2026-11-22
 
 ### Added
 - **Landing tab, Breaking Ground:** deployed science is now worked out the way the game pays it. Plan how many of each instrument,

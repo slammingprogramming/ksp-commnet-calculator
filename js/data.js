@@ -15,7 +15,7 @@
   'use strict';
 
   const GAME_VERSION = '1.12.5';
-  const APP_VERSION = '1.3.1'; // keep equal to package.json (a test checks it)
+  const APP_VERSION = '1.4.0'; // keep equal to package.json (a test checks it)
 
   const TECH = {
     start: 'Start',
