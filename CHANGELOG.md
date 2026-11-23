@@ -2,6 +2,13 @@
 
 All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] - 2026-11-22
+
+### Security
+- Loading saved settings from the browser's storage no longer lets a stored `__proto__`, `constructor` or `prototype` key reach the
+  object prototype (a CodeQL prototype-pollution alert). Saved state is still read the same way otherwise.
+- The repository test compares whole URLs instead of substrings (a CodeQL alert in a test file, no effect on the app).
+
 ## [1.3.0] - 2026-11-22
 
 ### Added
