@@ -2,7 +2,7 @@
 
 All notable changes to KSP CommNet Workbench. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.5.0] - 2026-11-23
 
 ### Added
 - **Network plan tab:** list the sites that must stay connected (stations, labs, bases, mining sites, parked landers, rovers and aircraft that roam)
