@@ -16,11 +16,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  # Build and deploy are separate jobs on purpose: deploy-pages looks the artifact up through the API, which can lag for a moment
+  # behind the upload. In one job the lookup came less than a second after the upload and found nothing (the 1.7.0 deploy failed
+  # four times that way); a second job starts seconds later.
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -35,5 +35,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5
